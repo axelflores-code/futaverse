@@ -111,7 +111,7 @@ export function EditMangaForm({
           status:      form.status,
           rating:      form.rating,
           score:       parseFloat(form.score),
-           autor:      form.autor || null,
+          autor:      form.autor || null,
         })
         .eq('id', mangaId)
 

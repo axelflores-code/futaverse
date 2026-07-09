@@ -18,7 +18,7 @@ export function NewMangaForm() {
     status:      'ongoing',
     rating:      'mature',
     score:       '0',
-    author:      '', 
+    autor:      '', 
   })
 
   function handleTitleChange(title: string) {
@@ -77,6 +77,7 @@ export function NewMangaForm() {
           rating:      form.rating,
           score:       parseFloat(form.score),
           views:       0,
+          autor:      form.autor || null,
         })
 
       if (insertError) throw new Error(insertError.message)
@@ -203,8 +204,8 @@ export function NewMangaForm() {
   </label>
   <input
     type="text"
-    value={form.author}
-    onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
+    value={form.autor}
+    onChange={e => setForm(f => ({ ...f, autor: e.target.value }))}
     placeholder="Nombre del autor"
     className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-red-500/50 transition-colors"
   />

@@ -10,7 +10,7 @@ export default function RegisterPage() {
             <path d="M9 1L3 5v8l6 4 6-4V5L9 1zm0 2.4L13 6v6l-4 2.6L5 12V6l4-2.6z" />
           </svg>
         </div>
-        <span className="font-display text-base font-extrabold text-white">FutaVerse</span>
+        <span className="font-display text-base font-extrabold text-white">MangaFuta</span>
       </div>
 
       <div className="mb-8">

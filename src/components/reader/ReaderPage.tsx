@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
 import { useReaderStore } from '@/stores/readerStore';
 import { cn } from '@/lib/utils';
 
@@ -75,28 +74,22 @@ export function ReaderPage({
 
       {/* Imagen real — solo renderizar si está en zona de pre-carga */}
       {state !== 'idle' && (
-        <Image
-          src={src}
-          alt={`${mangaTitle} — Capítulo ${chapterNumber}, página ${index + 1}`}
-          width={800}
-          height={1200}
-          priority={index < 2} // Las primeras 2 páginas son prioritarias
-          loading={index < 2 ? 'eager' : 'lazy'}
-          quality={90}
-          className={cn(
-            'block w-full h-auto transition-opacity duration-300',
-            state === 'loaded' ? 'opacity-100' : 'opacity-0 absolute inset-0',
-            // Filtro de brillo para el modo de lectura
-            settings.brightness !== 100 && `brightness-[${settings.brightness / 100}]`
-          )}
-          style={{
-            filter: settings.brightness !== 100
-              ? `brightness(${settings.brightness / 100})`
-              : undefined,
-          }}
-          onLoad={() => setState('loaded')}
-          onError={() => setState('error')}
-        />
+        <img
+  src={src}
+  alt={`${mangaTitle} — Capítulo ${chapterNumber}, página ${index + 1}`}
+  className={cn(
+    'block w-full h-auto transition-opacity duration-300',
+    state === 'loaded' ? 'opacity-100' : 'opacity-0 absolute inset-0',
+    settings.brightness !== 100 ? `brightness-[${settings.brightness / 100}]` : ''
+  )}
+  style={{
+    filter: settings.brightness !== 100
+      ? `brightness(${settings.brightness / 100})`
+      : undefined,
+  }}
+  onLoad={() => setState('loaded')}
+  onError={() => setState('error')}
+/>
       )}
 
       {/* Estado de error */}

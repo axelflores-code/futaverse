@@ -11,6 +11,7 @@ interface ReaderPageListProps {
   pages: string[];
   onPageVisible: (index: number) => void;
   mangaTitle: string;
+  chapterId:     string 
   chapterNumber: number;
   mangaSlug: string;
   prevChapter: ChapterNav | null;
@@ -22,6 +23,7 @@ export function ReaderPageList({
   onPageVisible,
   mangaTitle,
   chapterNumber,
+  chapterId,
   mangaSlug,
   prevChapter,
   nextChapter,
@@ -36,7 +38,7 @@ export function ReaderPageList({
   return (
     <main
       className="flex flex-col items-center mx-auto w-full"
-      style={{ gap: settings.gap, maxWidth: settings.maxWidth }}
+      style={{ gap: settings.gap, maxWidth: settings.maxWidth, width: '100%' }}
       aria-label="Páginas del capítulo"
     >
       {pages.map((src, i) => (
@@ -50,12 +52,13 @@ export function ReaderPageList({
         />
       ))}
 
-      <ChapterEndCard
-        chapterNumber={chapterNumber}
-        mangaSlug={mangaSlug}
-        prevChapter={prevChapter}
-        nextChapter={nextChapter}
-      />
+    <ChapterEndCard
+  chapterNumber={chapterNumber}
+  mangaSlug={mangaSlug}
+  chapterId={chapterId}  
+  prevChapter={prevChapter}
+  nextChapter={nextChapter}
+/>
     </main>
   );
 }

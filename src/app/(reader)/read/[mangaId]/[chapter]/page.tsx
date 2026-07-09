@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   return {
     title: `${data.manga.title} — Capítulo ${chapter}`,
-    description: `Lee ${data.manga.title} capítulo ${chapter} gratis en FutaVerse.`,
+    description: `Lee ${data.manga.title} capítulo ${chapter} gratis en MangaFuta.`,
     robots: { index: false }, // No indexar páginas del lector
   };
 }

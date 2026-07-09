@@ -3,6 +3,8 @@ import { getAllCategories } from '@/lib/queries/categories'
 import { getAllTags } from '@/lib/queries/tag'
 import { MangaCatalog } from '@/components/manga/MangaCatalog'
 
+
+export const revalidate = 3600 // revalida cada 1 hora
 export const metadata = {
   title: 'Catálogo de Manga',
 }

@@ -3,7 +3,7 @@ export type MangaStatus = 'ongoing' | 'completed' | 'hiatus';
 
 export type MangaRating = 'everyone' | 'teen' | 'mature';
 
-export type ArtistRole = 'author' | 'artist' | 'author_artist'
+export type ArtistRole = 'autor' | 'artist' | 'autor_artist'
 
 export type TagNamespace =
   | 'theme'
@@ -75,7 +75,7 @@ export interface Manga {
   score: number;          // 0.00 – 10.00
   views: bigint;
   genres: Genre[];
-  author: string | null;
+  autor: string | null;
   artist: string | null;
   createdAt: string;
   updatedAt: string;

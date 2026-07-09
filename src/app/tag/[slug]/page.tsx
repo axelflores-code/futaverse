@@ -4,6 +4,8 @@ import { MangaCard } from '@/components/manga/MangaCard'
 import Link from 'next/link'
 import type { Manga } from '@/types/manga'
 
+
+export const revalidate = 3600
 export default async function TagPage({
   params,
 }: {
@@ -105,6 +107,7 @@ export default async function TagPage({
           ))}
         </div>
       )}
+
     </div>
   )
 }

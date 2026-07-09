@@ -6,6 +6,8 @@ import { JsonLd } from '@/components/seo/JsonLd'
 import { formatNumber } from '@/lib/utils'
 import Image from 'next/image'
 import Link from 'next/link'
+import { MangaScore }     from '@/components/manga/MangaScore'
+import { MangaPageGallery } from '@/components/manga/MangaPageGallery'
 
 interface PageProps {
   params: Promise<{ slug: string }>
@@ -30,7 +32,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!manga) return { title: 'Manga no encontrado' }
   return {
     title:       manga.title,
-    description: manga.description ?? `Lee ${manga.title} en FutaVerse.`,
+    description: manga.description ?? `Lee ${manga.title} en MangaFuta.`,
     openGraph: {
       title:       manga.title,
       description: manga.description ?? '',
@@ -132,6 +134,7 @@ export default async function MangaDetailPage({ params }: PageProps) {
               )}
             </div>
           </div>
+          
 
           {/* Info */}
           <div className="flex-1 min-w-0">
@@ -249,6 +252,29 @@ export default async function MangaDetailPage({ params }: PageProps) {
             mangaSlug={slug}
           />
         </section>
+
+        {/* Puntuación */}
+<div className="py-5 border-y border-white/5 my-5">
+  <MangaScore
+    mangaId={manga.id}
+    currentScore={manga.score}
+  />
+</div>
+
+{/* Galería de páginas */}
+<MangaPageGallery
+  chapters={chapters.map((c: ChapterItem) => ({
+    id:        c.id,
+    mangaId:   c.manga_id,
+    number:    c.number,
+    title:     c.title,
+    pages:     c.pages,
+    views:     BigInt(c.views),
+    createdAt: c.created_at,
+  }))}
+  mangaSlug={slug}
+/>
+        
       </div>
     </>
   )

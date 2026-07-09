@@ -1,34 +1,109 @@
+/* src/app/globals.css */
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 @theme {
+  /* Colores principales del logo */
+  --color-rose:        #C4956A;
+  --color-rose-light:  #E8B4A0;
+  --color-rose-dark:   #A67650;
+  --color-blue:        #2D4B8E;
+  --color-blue-light:  #4A6FBF;
+  --color-blue-dark:   #1E3366;
+
+  /* Fondos */
+  --color-bg:          #0a0a0f;
+  --color-surface:     #111118;
+  --color-surface-2:   #18181f;
+  --color-surface-3:   #1e1e28;
+
+  /* Bordes */
+  --color-border:      rgba(196,149,106,0.12);
+  --color-border-2:    rgba(196,149,106,0.06);
+
+  /* Texto */
+  --color-text:        #f0ece8;
+  --color-text-2:      #a09890;
+  --color-text-3:      #605850;
+
+  /* Reader */
   --color-reader-bg:       #0a0a0a;
   --color-reader-surface:  #111111;
   --color-reader-border:   #1e1e1e;
   --color-reader-skeleton: #141414;
   --color-reader-muted:    #555555;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #0a0a0f;
+  color: #f0ece8;
+  font-family: system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar personalizada */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a0f;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(196,149,106,0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(196,149,106,0.5);
+}
+
+/* Selección de texto */
+::selection {
+  background: rgba(196,149,106,0.3);
+  color: #f0ece8;
+}
+
+/* Gradiente del logo para texto */
+.gradient-text {
+  background: linear-gradient(135deg, #C4956A 0%, #E8B4A0 40%, #4A6FBF 70%, #2D4B8E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gradiente del logo para fondos */
+.gradient-bg {
+  background: linear-gradient(135deg, #C4956A 0%, #E8B4A0 40%, #4A6FBF 70%, #2D4B8E 100%);
+}
+
+/* Borde con gradiente */
+.gradient-border {
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, #C4956A, #2D4B8E);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Glow sutil del logo */
+.logo-glow {
+  filter: drop-shadow(0 0 20px rgba(196,149,106,0.3)) drop-shadow(0 0 40px rgba(45,75,142,0.2));
 }

@@ -32,19 +32,19 @@ export default function LoginPage() {
 
 function AuthBrandPanel() {
   return (
-    <div className="hidden md:flex w-[42%] bg-[#0b0c10] p-10 flex-col justify-between border-r border-white/5">
+    <div className="hidden md:flex w-[42%] bg-[#090a0c] p-10 flex-col justify-between border-r border-white/5">
       <div className="flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-lg bg-red-500 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-pink-500 flex items-center justify-center">
           <BookOpenIcon />
         </div>
         <span className="font-display text-lg font-extrabold text-white tracking-tight">
-          FutaVerse
+          MangaFuta
         </span>
       </div>
 
       <div>
         <p className="text-[11px] font-semibold tracking-widest text-red-500 uppercase mb-4">
-          Tu universo manga
+          ¡Aqui puedes leer manga H en español gratis y sin registro!
         </p>
         <h2 className="font-display text-3xl font-extrabold text-white leading-tight mb-3">
           Miles de títulos.

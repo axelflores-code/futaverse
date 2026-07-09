@@ -5,7 +5,7 @@ type Theme = 'dark' | 'light';
 
 interface ReaderSettings {
   theme: Theme;
-  maxWidth: 600 | 800 | 1100;
+  maxWidth: 900 | 1100 | 1400;
   gap: 0 | 8 | 16;
   brightness: number; // 50–110
 }
@@ -28,7 +28,7 @@ interface ReaderState {
 
 const DEFAULT_SETTINGS: ReaderSettings = {
   theme: 'dark',
-  maxWidth: 800,
+  maxWidth: 1100,
   gap: 0,
   brightness: 100,
 };
@@ -38,7 +38,7 @@ export const useReaderStore = create<ReaderState>()(
     (set) => ({
       currentPage: 0,
       totalPages: 0,
-      showSettings: false,
+      showSettings: true,
 
       settings: DEFAULT_SETTINGS,
 
