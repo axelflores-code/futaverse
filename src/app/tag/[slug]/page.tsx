@@ -49,8 +49,8 @@ export default async function TagPage({
         rating:            m.rating as Manga['rating'],
         description:       m.description as string | null,
         views:             m.views as bigint,
-        autor:            m.autor as string | null,
-        artist:            null,
+        author:           m.autor as string | null,
+        artist:           null,
         alternativeTitles: [],
         genres: ((m.manga_genres as Array<{ genres: { id: string; name: string; slug: string } }>) ?? [])
           .map(mg => mg.genres),
