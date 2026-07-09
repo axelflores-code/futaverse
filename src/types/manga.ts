@@ -75,7 +75,7 @@ export interface Manga {
   score: number;          // 0.00 – 10.00
   views: bigint;
   genres: Genre[];
-  autor: string | null;
+  author: string | null;
   artist: string | null;
   createdAt: string;
   updatedAt: string;
