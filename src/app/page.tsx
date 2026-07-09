@@ -20,7 +20,7 @@ function mapManga(m: Record<string, unknown>): Manga {
     rating:            m.rating as Manga['rating'],
     score:             m.score as number,
     views:             BigInt(m.views as number),
-    autor:            m.author as string | null,
+    author:            m.author as string | null,
     artist:            null,
     genres:            ((m.manga_genres as Array<{ genres: { id: string; name: string; slug: string } }>) ?? [])
                          .map(mg => mg.genres).filter(Boolean),
