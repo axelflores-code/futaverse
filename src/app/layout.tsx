@@ -5,13 +5,68 @@ import { Footer } from '@/components/layout/Footer'
 import { AgeGateProvider } from '@/components/AgeGateProvider'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('http://localhost:3000'),
+  metadataBase: new URL('https://mangafuta.com'),
   title: {
-    default: 'FutaVerse — Manga +18',
-    template: '%s | FutaVerse',
+    default: 'MangaFuta — Manga Futanari en Español',
+    template: '%s | MangaFuta',
   },
-  description: 'Plataforma de manga adulto.',
-  robots: { index: false, follow: false },
+  description: 'Lee manga futanari y hentai traducido al español. La mejor colección de manga futa en Latino América. Acceso gratuito a cientos de títulos.',
+  keywords: [
+    'manga futanari español',
+    'manga futa latino',
+    'hentai español',
+    'manga adulto español',
+    'futanari manga online',
+    'manga futa gratis',
+    'dickgirl manga español',
+    'manga +18 español',
+    'leer manga futa online',
+    'manga hentai latino',
+  ],
+  authors: [{ name: 'MangaFuta' }],
+  creator: 'MangaFuta',
+  publisher: 'MangaFuta',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'es_LA',
+    url: 'https://mangafuta.com',
+    siteName: 'MangaFuta',
+    title: 'MangaFuta — Manga Futanari en Español',
+    description: 'La mejor colección de manga futanari traducido al español para Latino América.',
+    images: [
+      {
+        url: '/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'MangaFuta',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'MangaFuta — Manga Futanari en Español',
+    description: 'La mejor colección de manga futanari traducido al español.',
+    images: ['/og-image.jpg'],
+  },
+  alternates: {
+    canonical: 'https://mangafuta.com',
+    languages: {
+      'es': 'https://mangafuta.com',
+    },
+  },
+  verification: {
+    google: '', // pega aquí tu código de Google Search Console cuando lo tengas
+  },
 }
 
 export default function RootLayout({
@@ -21,6 +76,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
+      <head>
+        <link rel="canonical" href="https://mangafuta.com" />
+      </head>
       <body className="bg-[#0b0c10] text-white antialiased min-h-screen flex flex-col">
         <AgeGateProvider>
           <Navbar />

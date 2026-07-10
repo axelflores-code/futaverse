@@ -8,16 +8,51 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .from('mangas')
     .select('slug, updated_at');
 
+  const { data: tags } = await supabase
+    .from('tags')
+    .select('slug');
+
+  const { data: genres } = await supabase
+    .from('genres')
+    .select('slug');
+
   const mangaUrls: MetadataRoute.Sitemap = (mangas ?? []).map((manga) => ({
-    url: `https://futaverse.com/manga/${manga.slug}`,
+    url: `https://mangafuta.com/manga/${manga.slug}`,
     lastModified: new Date(manga.updated_at),
-    changeFrequency: 'weekly',
+    changeFrequency: 'weekly' as const,
     priority: 0.8,
   }));
 
+  const tagUrls: MetadataRoute.Sitemap = (tags ?? []).map((tag) => ({
+    url: `https://mangafuta.com/tag/${tag.slug}`,
+    changeFrequency: 'weekly' as const,
+    priority: 0.6,
+  }));
+
+  const genreUrls: MetadataRoute.Sitemap = (genres ?? []).map((genre) => ({
+    url: `https://mangafuta.com/genre/${genre.slug}`,
+    changeFrequency: 'weekly' as const,
+    priority: 0.6,
+  }));
+
   return [
-    { url: 'https://futaverse.com', changeFrequency: 'daily', priority: 1 },
-    { url: 'https://futaverse.com/manga', changeFrequency: 'daily', priority: 0.9 },
+    {
+      url: 'https://mangafuta.com',
+      changeFrequency: 'daily' as const,
+      priority: 1,
+    },
+    {
+      url: 'https://mangafuta.com/manga',
+      changeFrequency: 'daily' as const,
+      priority: 0.9,
+    },
+    {
+      url: 'https://mangafuta.com/search',
+      changeFrequency: 'weekly' as const,
+      priority: 0.7,
+    },
     ...mangaUrls,
+    ...tagUrls,
+    ...genreUrls,
   ];
 }
