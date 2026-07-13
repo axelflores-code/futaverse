@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ChapterList } from '@/components/manga/ChapterList'
+import { MangaViewTracker } from '@/components/manga/MangaViewTracker'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { formatNumber } from '@/lib/utils'
 import Image from 'next/image'
@@ -99,6 +100,7 @@ export default async function MangaDetailPage({ params }: PageProps) {
 
   return (
     <>
+    <MangaViewTracker mangaId={manga.id} />
       <JsonLd
         type="Book"
         data={{ name: manga.title, description: manga.description, image: manga.cover_url }}
@@ -185,24 +187,6 @@ export default async function MangaDetailPage({ params }: PageProps) {
               <p className="text-sm text-zinc-400 leading-relaxed mb-5 max-w-2xl">
                 {manga.description}
               </p>
-            )}
-
-            {/* Géneros */}
-            {genres.length > 0 && (
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider mb-2">Géneros</p>
-                <div className="flex flex-wrap gap-2">
-                  {genres.map((genre: GenreItem) => (
-                    <Link
-                      key={genre.id}
-                      href={`/genre/${genre.slug}`}
-                      className="text-xs px-3 py-1 rounded-full border border-white/10 text-zinc-400 hover:text-white hover:border-white/20 transition-colors"
-                    >
-                      {genre.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
             )}
 
             {/* Tags por namespace */}

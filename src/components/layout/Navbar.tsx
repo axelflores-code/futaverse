@@ -85,9 +85,6 @@ export function Navbar() {
         {/* Logo */}
         <Link href="/" style={{ display:'flex', alignItems:'center', gap:'10px', flexShrink:0, textDecoration:'none' }}>
           <Image src="/logo.png" alt="MangaFuta" width={34} height={34} priority style={{ width:'auto', height:'34px', objectFit:'contain' }} />
-          <span style={{ fontFamily:'"Cormorant Garamond", Georgia, serif', fontWeight:700, fontSize:'22px', color:'#C4956A', letterSpacing:'-0.02em', lineHeight:1 }}>
-            Mangafuta
-          </span>
         </Link>
 
         {/* Search */}
