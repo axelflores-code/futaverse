@@ -218,9 +218,6 @@ export function Navbar() {
           {/* Logo */}
           <Link href="/" style={{ display:'flex', alignItems:'center', gap:'9px', flexShrink:0, textDecoration:'none' }}>
             <Image src="/logo.png" alt="FutaVerse" width={32} height={32} priority style={{ width:'auto', height:'32px', objectFit:'contain' }} />
-            <span style={{ fontFamily:'"Cormorant Garamond", Georgia, serif', fontWeight:700, fontSize:'21px', color:'#C4956A', letterSpacing:'-0.02em', lineHeight:1 }}>
-              Mangafuta
-            </span>
           </Link>
 
           {/* Search desktop */}
