@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Fragment } from 'react'
 import { MangaCard } from './MangaCard'
 import { cn } from '@/lib/utils'
 import type { Manga, MangaStatus, Category, Tag, TagNamespace } from '@/types/manga'
@@ -193,10 +193,17 @@ export function MangaCatalog({ initialMangas, categories, tags }: MangaCatalogPr
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {filtered.map((manga, i) => (
-            <MangaCard key={manga.id} manga={manga} priority={i < 6} />
-          ))}
+  {filtered.map((manga, i) => (
+    <Fragment key={manga.id}>
+      <MangaCard manga={manga} priority={i < 6} />
+      {i === 11 && (
+        <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 flex justify-center my-2">
+          <ins className="eas6a97888e2" data-zoneid="5974114"></ins>
         </div>
+      )}
+    </Fragment>
+  ))}
+</div>
       )}
     </div>
   )

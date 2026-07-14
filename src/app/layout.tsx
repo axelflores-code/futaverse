@@ -3,6 +3,8 @@ import './globals.css'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { AgeGateProvider } from '@/components/AgeGateProvider'
+import Script from 'next/script'
+
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://mangafuta.com'),
@@ -82,6 +84,13 @@ export default function RootLayout({
       <head>
         <link rel="canonical" href="https://mangafuta.com" />
       </head>
+      <Script
+  src="https://a.magsrv.com/ad-provider.js"
+  strategy="lazyOnload"
+/>
+<Script id="exoclick-init" strategy="lazyOnload">
+  {`(AdProvider = window.AdProvider || []).push({"serve": {}});`}
+</Script>
       <body className="bg-[#0b0c10] text-white antialiased min-h-screen flex flex-col">
         <AgeGateProvider>
           <Navbar />
