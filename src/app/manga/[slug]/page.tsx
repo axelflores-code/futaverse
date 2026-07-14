@@ -9,6 +9,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { MangaScore }     from '@/components/manga/MangaScore'
 import { MangaPageGallery } from '@/components/manga/MangaPageGallery'
+import { FavoriteButton } from '@/components/manga/FavoriteButton'
 
 interface PageProps {
   params: Promise<{ slug: string }>
@@ -189,6 +190,8 @@ export default async function MangaDetailPage({ params }: PageProps) {
               </p>
             )}
 
+            
+
             {/* Tags por namespace */}
             {Object.entries(tagsByNs).map(([ns, nsTags]: [string, TagItem[]]) => (
               <div key={ns} className="mb-4">
@@ -215,6 +218,14 @@ export default async function MangaDetailPage({ params }: PageProps) {
           </div>
         </div>
 
+                {/* Puntuación */}
+<div className="py-5 border-y border-white/5 my-5">
+  <MangaScore
+    mangaId={manga.id}
+    currentScore={manga.score}
+  />
+</div>
+
         {/* Capítulos */}
         <section>
           <h2 className="text-xl font-bold text-white mb-4">
@@ -237,12 +248,24 @@ export default async function MangaDetailPage({ params }: PageProps) {
           />
         </section>
 
-        {/* Puntuación */}
-<div className="py-5 border-y border-white/5 my-5">
-  <MangaScore
-    mangaId={manga.id}
-    currentScore={manga.score}
-  />
+        {/* Botón de favoritos */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_COLOR[manga.status] ?? ''}`}>
+    {STATUS_LABEL[manga.status] ?? manga.status}
+  </span>
+  {manga.score > 0 && (
+    <span className="text-xs text-yellow-400 flex items-center gap-1">
+      ★ <span className="font-semibold">{manga.score.toFixed(1)}</span>
+    </span>
+  )}
+  <span className="text-xs text-zinc-600">
+    {formatNumber(manga.views)} vistas
+  </span>
+</div>
+
+{/* Botón favorito */}
+<div className="mb-5">
+  <FavoriteButton mangaId={manga.id} />
 </div>
 
 {/* Galería de páginas */}

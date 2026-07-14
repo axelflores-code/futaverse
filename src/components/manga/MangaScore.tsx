@@ -85,13 +85,13 @@ export function MangaScore({ mangaId, currentScore }: MangaScoreProps) {
         </span>
         {avgScore > 0 && (
           <span className="text-xs text-yellow-400 font-semibold">
-            ★ {avgScore.toFixed(1)}
+            ★ {avgScore.toFixed(1)}/5
           </span>
         )}
       </div>
 
       <div className="flex items-center gap-1">
-        {[1,2,3,4,5,6,7,8,9,10].map(star => (
+        {[1,2,3,4,5].map(star => (
           <button
             key={star}
             onClick={() => handleScore(star)}
