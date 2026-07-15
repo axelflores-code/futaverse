@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useReaderStore } from '@/stores/readerStore'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
+import { ChapterComments } from './ChapterComments'
 
 interface ChapterNav { id: string; number: number; mangaId: string }
 
@@ -191,6 +192,12 @@ export function ChapterEndCard({
           </Link>
         )}
       </div>
+
+      {/* Comentarios */}
+<ChapterComments
+  chapterId={chapterId}
+  mangaId={mangaSlug}
+/>
     </div>
   )
 }

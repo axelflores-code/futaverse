@@ -83,6 +83,18 @@ export default function RootLayout({
     <html lang="es">
       <head>
         <link rel="canonical" href="https://mangafuta.com" />
+        <link
+  rel="stylesheet"
+  href="https://cdn-uicons.flaticon.com/2.6.0/uicons-regular-rounded/css/uicons-regular-rounded.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://cdn-uicons.flaticon.com/2.6.0/uicons-solid-rounded/css/uicons-solid-rounded.css"
+/>
+<link
+  rel="stylesheet"
+  href="https://cdn-uicons.flaticon.com/2.6.0/uicons-brands/css/uicons-brands.css"
+/>
       </head>
       <Script
   src="https://a.magsrv.com/ad-provider.js"

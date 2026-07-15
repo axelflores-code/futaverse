@@ -8,7 +8,7 @@ import { Pagination }      from '@/components/ui/Pagination'
 import Link                from 'next/link'
 import type { Manga }      from '@/types/manga'
 
-export const revalidate = 900 // 15 min
+export const revalidate = 900
 
 const PAGE_SIZE = 24
 
@@ -36,12 +36,12 @@ function mapManga(m: Record<string, unknown>): Manga {
   }
 }
 
-const PERIOD_LABELS: Record<Period, string> = {
-  today: 'Hoy',
-  week:  'Esta semana',
-  month: 'Este mes',
-  all:   'Todo el tiempo',
-}
+const PERIOD_OPTIONS: { value: Period; label: string }[] = [
+  { value: 'today', label: 'Hoy'           },
+  { value: 'week',  label: 'Esta semana'   },
+  { value: 'month', label: 'Este mes'      },
+  { value: 'all',   label: 'Todo el tiempo'},
+]
 
 const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: '',          label: 'Todos'    },
@@ -53,20 +53,9 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
 export default async function CatalogPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    page?:   string
-    status?: string
-    period?: string
-    sortBy?: string
-  }>
+  searchParams: Promise<{ page?: string; status?: string; period?: string; sortBy?: string }>
 }) {
-  const {
-    page:   pageParam,
-    status  = '',
-    period  = 'all',
-    sortBy  = 'updatedAt',
-  } = await searchParams
-
+  const { page: pageParam, status = '', period = 'all', sortBy = 'updatedAt' } = await searchParams
   const currentPage = Math.max(1, Number(pageParam ?? 1))
   const from        = (currentPage - 1) * PAGE_SIZE
   const to          = from + PAGE_SIZE - 1
@@ -75,53 +64,21 @@ export default async function CatalogPage({
   let mangas: Manga[] = []
   let total           = 0
 
-  if (period !== 'all' || sortBy === 'popular') {
-    // Usar la función RPC para popularidad por período
-    const { data: popularIds } = await supabase.rpc('get_popular_mangas', {
-      period: period === 'all' ? 'all' : period,
-      lim:    200,
-    })
-
+  if (period !== 'all') {
+    const { data: popularIds } = await supabase.rpc('get_popular_mangas', { period, lim: 200 })
     if (popularIds && popularIds.length > 0) {
       const ids = popularIds.map((r: { manga_id: string }) => r.manga_id)
-
-      let query = supabase
-        .from('mangas')
-        .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
-        .in('id', ids)
-
+      let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).in('id', ids)
       if (status) query = query.eq('status', status)
-
       const { data, count } = await query.range(from, to)
       total  = count ?? 0
-
-      // Ordenar por popularidad según el resultado del RPC
-      const sorted = (data ?? []).sort((a, b) => {
-        const aIdx = ids.indexOf(a.id)
-        const bIdx = ids.indexOf(b.id)
-        return aIdx - bIdx
-      })
-
+      const sorted = (data ?? []).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
       mangas = sorted.map(mapManga)
     }
   } else {
-    // Orden normal
-    const sortColumn = sortBy === 'score'
-      ? 'score'
-      : sortBy === 'views'
-      ? 'views'
-      : sortBy === 'createdAt'
-      ? 'created_at'
-      : 'updated_at'
-
-    let query = supabase
-      .from('mangas')
-      .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
-      .order(sortColumn, { ascending: false })
-      .range(from, to)
-
+    const sortColumn = sortBy === 'score' ? 'score' : sortBy === 'views' ? 'views' : sortBy === 'createdAt' ? 'created_at' : 'updated_at'
+    let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).order(sortColumn, { ascending: false }).range(from, to)
     if (status) query = query.eq('status', status)
-
     const { data, count } = await query
     total  = count ?? 0
     mangas = (data ?? []).map(mapManga)
@@ -131,79 +88,91 @@ export default async function CatalogPage({
   const [categories, tags] = await Promise.all([getAllCategories(), getAllTags()])
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 16px' }}>
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold" style={{ color: '#f0ece8' }}>
+      <div style={{ marginBottom: '28px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
           Catálogo
-          <span className="text-sm font-normal ml-2"
-            style={{ color: 'rgba(160,152,144,0.6)' }}
-          >
+          <span style={{ fontSize: '14px', fontWeight: 400, color: 'rgba(160,152,144,0.5)' }}>
             ({total} títulos)
           </span>
         </h1>
       </div>
 
-      {/* Filtro de popularidad por período */}
-      <div className="mb-4">
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2"
-          style={{ color: 'rgba(96,88,80,1)' }}
-        >
-          Popular:
-        </p>
-        <div className="flex gap-2 flex-wrap">
-          {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([p, label]) => (
-            <Link
-              key={p}
-              href={`/manga?period=${p}&status=${status}&sortBy=${sortBy}`}
-              className="px-4 py-1.5 rounded-full text-sm font-medium transition-all"
-              style={period === p ? {
-                background:  'rgba(196,149,106,0.15)',
-                border:      '1px solid #C4956A',
-                color:       '#C4956A',
-              } : {
-                background:  'rgba(255,255,255,0.04)',
-                border:      '1px solid rgba(255,255,255,0.08)',
-                color:       'rgba(160,152,144,0.8)',
-              }}
-            >
-              {label}
-            </Link>
-          ))}
+      {/* Filtros centrados */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '32px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.05)' }}>
+
+        {/* Popular por período */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
+          <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(96,88,80,1)' }}>
+            Popular
+          </p>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {PERIOD_OPTIONS.map(opt => (
+              <Link
+                key={opt.value}
+                href={`/manga?period=${opt.value}&status=${status}`}
+                style={{
+                  padding:      '7px 18px',
+                  borderRadius: '20px',
+                  fontSize:     '13px',
+                  fontWeight:   period === opt.value ? 600 : 400,
+                  textDecoration: 'none',
+                  transition:   'all .15s',
+                  background:   period === opt.value ? '#3D5A9E' : 'rgba(255,255,255,0.04)',
+                  border:       `1px solid ${period === opt.value ? '#3D5A9E' : 'rgba(255,255,255,0.08)'}`,
+                  color:        period === opt.value ? '#fff' : 'rgba(175,167,158,1)',
+                }}
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Separador */}
+        <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+
+        {/* Estado */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
+          <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(96,88,80,1)' }}>
+            Estado
+          </p>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {STATUS_OPTIONS.map(opt => (
+              <Link
+                key={opt.value}
+                href={`/manga?status=${opt.value}&period=${period}`}
+                style={{
+                  padding:      '7px 18px',
+                  borderRadius: '20px',
+                  fontSize:     '13px',
+                  fontWeight:   status === opt.value ? 600 : 400,
+                  textDecoration: 'none',
+                  transition:   'all .15s',
+                  background:   status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.04)',
+                  border:       `1px solid ${status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.08)'}`,
+                  color:        status === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
+                }}
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Filtro de estado */}
-      <div className="flex gap-2 flex-wrap mb-6">
-        {STATUS_OPTIONS.map(opt => (
-          <Link
-            key={opt.value}
-            href={`/manga?status=${opt.value}&period=${period}&sortBy=${sortBy}`}
-            className="px-4 py-1.5 rounded-full text-sm font-medium transition-all"
-            style={status === opt.value ? {
-              background:  'rgba(196,149,106,0.15)',
-              border:      '1px solid #C4956A',
-              color:       '#C4956A',
-            } : {
-              background:  'rgba(255,255,255,0.04)',
-              border:      '1px solid rgba(255,255,255,0.08)',
-              color:       'rgba(160,152,144,0.8)',
-            }}
-          >
-            {opt.label}
-          </Link>
-        ))}
-      </div>
-
+      {/* Grid */}
       <MangaCatalog
         initialMangas={mangas}
         categories={categories}
         tags={tags}
       />
 
+      {/* Paginación */}
       {totalPages > 1 && (
-        <div className="mt-10 flex justify-center">
+        <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'center' }}>
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
