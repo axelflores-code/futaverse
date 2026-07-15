@@ -30,10 +30,10 @@ interface SearchBoxProps {
 }
 
 const NAV_LINKS = [
-  { href: '/',           label: 'Inicio',     icon: '🏠' },
-  { href: '/manga',      label: 'Catálogo',   icon: '📚' },
-  { href: '/tags',       label: 'Tags',       icon: '🏷️' },
-  { href: '/biblioteca', label: 'Biblioteca', icon: '❤️' },
+  { href: '/',           label: 'Inicio',     icon: <i className="fi fi-rr-home"  /> },
+  { href: '/manga',      label: 'Catálogo',   icon: <i className="fi fi-rr-books" /> },
+  { href: '/tags',       label: 'Tags',       icon: <i className="fi fi-rr-tags"  /> },
+  { href: '/biblioteca', label: 'Biblioteca', icon: <i className="fi fi-rr-heart" /> },
 ]
 
 const NS_LABELS: Record<string, string> = {
