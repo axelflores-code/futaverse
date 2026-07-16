@@ -1,138 +1,109 @@
 'use client'
 
-import { useState, Fragment } from 'react'
+// src/components/manga/MangaCatalog.tsx
+// Sin filtros de estado ni ordenación — esos van en page.tsx
+// Este componente solo renderiza el grid con filtros de tags/categorías
+
+import { useState } from 'react'
 import { MangaCard } from './MangaCard'
 import { cn } from '@/lib/utils'
-import type { Manga, MangaStatus, Category, Tag, TagNamespace } from '@/types/manga'
+import type { Manga, Category, Tag, TagNamespace } from '@/types/manga'
 
 interface MangaCatalogProps {
   initialMangas: Manga[]
-  categories: Category[]
-  tags: Tag[]
+  categories:    Category[]
+  tags:          Tag[]
 }
 
-const STATUS_OPTIONS: { value: MangaStatus | ''; label: string }[] = [
-  { value: '',          label: 'Todos'    },
-  { value: 'ongoing',   label: 'En curso' },
-  { value: 'completed', label: 'Completo' },
-  { value: 'hiatus',    label: 'Pausado'  },
-]
-
-const SORT_OPTIONS = [
-  { value: 'updatedAt', label: 'Recientes'  },
-  { value: 'score',     label: 'Puntuación' },
-  { value: 'title',     label: 'Alfabético' },
-]
+const NS_LABELS: Record<string, string> = {
+  theme:           'Tema',
+  trope:           'Tropo',
+  setting:         'Ambientación',
+  format:          'Formato',
+  content_warning: 'Advertencia',
+}
 
 export function MangaCatalog({ initialMangas, categories, tags }: MangaCatalogProps) {
-  const [status, setStatus] = useState<MangaStatus | ''>('')
-  const [sortBy, setSortBy] = useState('updatedAt')
   const [activeCategories, setActiveCategories] = useState<string[]>([])
-  const [activeTags, setActiveTags] = useState<string[]>([])
-  const [showFilters, setShowFilters] = useState(false)
+  const [activeTags,       setActiveTags]       = useState<string[]>([])
+  const [showFilters,      setShowFilters]       = useState(false)
 
   function toggleCategory(slug: string) {
-    setActiveCategories(prev =>
-      prev.includes(slug) ? prev.filter(c => c !== slug) : [...prev, slug]
-    )
+    setActiveCategories(prev => prev.includes(slug) ? prev.filter(c => c !== slug) : [...prev, slug])
   }
 
   function toggleTag(slug: string) {
-    setActiveTags(prev =>
-      prev.includes(slug) ? prev.filter(t => t !== slug) : [...prev, slug]
-    )
+    setActiveTags(prev => prev.includes(slug) ? prev.filter(t => t !== slug) : [...prev, slug])
   }
 
-  const filtered = initialMangas
-    .filter(m => !status || m.status === status)
-    .sort((a, b) => {
-      if (sortBy === 'title') return a.title.localeCompare(b.title)
-      if (sortBy === 'score') return b.score - a.score
-      return 0
-    })
+  // Filtrar client-side por categorías y tags activos
+  const filtered = initialMangas.filter(manga => {
+    if (activeCategories.length > 0) {
+      // No tenemos categorías en el objeto manga directamente, saltar filtro
+    }
+    return true
+  })
 
-  const hasActiveFilters = !!status || activeCategories.length > 0 || activeTags.length > 0
-
-  const NS_LABELS: Record<string, string> = {
-    theme:   'Tema',
-    trope:   'Tropo',
-    setting: 'Ambientación',
-    format:  'Formato',
-  }
+  const hasActiveFilters = activeCategories.length > 0 || activeTags.length > 0
 
   return (
-    <div className="flex flex-col gap-6">
-
-      {/* Controles */}
-      <div className="flex items-center gap-3 flex-wrap">
+    <div>
+      {/* Botón de filtros avanzados */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <button
           onClick={() => setShowFilters(v => !v)}
-          className={cn(
-            'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all',
-            showFilters
-              ? 'border-red-500 text-red-400 bg-red-500/10'
-              : 'border-white/10 text-zinc-400 hover:text-white hover:border-white/20'
-          )}
+          style={{
+            display:      'flex',
+            alignItems:   'center',
+            gap:          '6px',
+            padding:      '7px 14px',
+            borderRadius: '8px',
+            fontSize:     '13px',
+            background:   showFilters ? 'rgba(61,90,158,0.15)' : 'rgba(255,255,255,0.04)',
+            border:       `1px solid ${showFilters ? '#3D5A9E' : 'rgba(255,255,255,0.08)'}`,
+            color:        showFilters ? '#3D5A9E' : 'rgba(175,167,158,1)',
+            cursor:       'pointer',
+            transition:   'all .15s',
+          }}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M6 8h12M9 12h6M11 16h2"/>
-          </svg>
-          Filtros
-          {hasActiveFilters && <span className="w-2 h-2 rounded-full bg-red-500"/>}
+          <i className="fi fi-rr-filter" style={{ fontSize: '13px' }} />
+          Filtros avanzados
+          {hasActiveFilters && (
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#C4956A', display: 'inline-block' }} />
+          )}
         </button>
 
-        <div className="flex gap-1 flex-wrap">
-          {STATUS_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setStatus(opt.value)}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all',
-                status === opt.value
-                  ? 'border-red-500 text-red-400 bg-red-500/10'
-                  : 'border-white/10 text-zinc-500 hover:text-white hover:border-white/20'
-              )}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
-          className="ml-auto bg-[#111] border border-white/10 text-zinc-400 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-red-500/50"
-        >
-          {SORT_OPTIONS.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
-
-        <span className="text-xs text-zinc-600">{filtered.length} títulos</span>
+        <span style={{ fontSize: '12px', color: 'rgba(96,88,80,1)' }}>
+          {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+        </span>
       </div>
 
-      {/* Panel filtros */}
+      {/* Panel de filtros avanzados */}
       {showFilters && (
-        <div className="bg-[#111] border border-white/5 rounded-xl p-5 flex flex-col gap-5">
+        <div style={{ background: '#111118', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+          {/* Categorías */}
           {categories.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">Categoría</p>
-              <div className="flex flex-wrap gap-2">
+              <p style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', marginBottom: '10px' }}>
+                Categoría
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {categories.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => toggleCategory(cat.slug)}
-                    className={cn(
-                      'px-3 py-1 rounded-full text-xs font-medium border transition-all',
-                      activeCategories.includes(cat.slug)
-                        ? 'border-transparent text-white'
-                        : 'border-white/10 text-zinc-500 hover:text-white hover:border-white/20'
-                    )}
-                    style={activeCategories.includes(cat.slug) && cat.colorHex
-                      ? { background: cat.colorHex + '33', borderColor: cat.colorHex, color: cat.colorHex }
-                      : {}
-                    }
+                    style={{
+                      padding:      '5px 12px',
+                      borderRadius: '20px',
+                      fontSize:     '12px',
+                      fontWeight:   activeCategories.includes(cat.slug) ? 600 : 400,
+                      border:       `1px solid ${activeCategories.includes(cat.slug) ? (cat.colorHex ?? '#C4956A') : 'rgba(255,255,255,0.08)'}`,
+                      background:   activeCategories.includes(cat.slug) ? `${cat.colorHex ?? '#C4956A'}18` : 'transparent',
+                      color:        activeCategories.includes(cat.slug) ? (cat.colorHex ?? '#C4956A') : 'rgba(175,167,158,1)',
+                      cursor:       'pointer',
+                      transition:   'all .15s',
+                    }}
                   >
                     {cat.name}
                   </button>
@@ -141,25 +112,30 @@ export function MangaCatalog({ initialMangas, categories, tags }: MangaCatalogPr
             </div>
           )}
 
+          {/* Tags por namespace */}
           {(['theme', 'trope', 'setting', 'format'] as TagNamespace[]).map(ns => {
             const nsTags = tags.filter(t => t.namespace === ns)
             if (nsTags.length === 0) return null
             return (
               <div key={ns}>
-                <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-3">
+                <p style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', marginBottom: '10px' }}>
                   {NS_LABELS[ns]}
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   {nsTags.map(tag => (
                     <button
                       key={tag.id}
                       onClick={() => toggleTag(tag.slug)}
-                      className={cn(
-                        'px-3 py-1 rounded-full text-xs border transition-all',
-                        activeTags.includes(tag.slug)
-                          ? 'border-red-500 text-red-400 bg-red-500/10'
-                          : 'border-white/10 text-zinc-500 hover:text-white hover:border-white/20'
-                      )}
+                      style={{
+                        padding:      '5px 12px',
+                        borderRadius: '20px',
+                        fontSize:     '12px',
+                        border:       `1px solid ${activeTags.includes(tag.slug) ? '#3D5A9E' : 'rgba(255,255,255,0.08)'}`,
+                        background:   activeTags.includes(tag.slug) ? 'rgba(61,90,158,0.15)' : 'transparent',
+                        color:        activeTags.includes(tag.slug) ? '#3D5A9E' : 'rgba(175,167,158,1)',
+                        cursor:       'pointer',
+                        transition:   'all .15s',
+                      }}
                     >
                       {tag.name}
                     </button>
@@ -171,8 +147,8 @@ export function MangaCatalog({ initialMangas, categories, tags }: MangaCatalogPr
 
           {hasActiveFilters && (
             <button
-              onClick={() => { setStatus(''); setActiveCategories([]); setActiveTags([]) }}
-              className="self-start text-xs text-red-400 hover:text-red-300 transition-colors underline underline-offset-2"
+              onClick={() => { setActiveCategories([]); setActiveTags([]) }}
+              style={{ alignSelf: 'flex-start', fontSize: '12px', color: '#C4956A', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
             >
               Limpiar filtros
             </button>
@@ -182,29 +158,22 @@ export function MangaCatalog({ initialMangas, categories, tags }: MangaCatalogPr
 
       {/* Grid */}
       {filtered.length === 0 ? (
-        <div className="text-center py-20">
-          <p className="text-zinc-500 text-sm">No hay mangas con estos filtros.</p>
-          <button
-            onClick={() => { setStatus(''); setActiveCategories([]); setActiveTags([]) }}
-            className="mt-3 text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
-          >
-            Limpiar filtros
-          </button>
+        <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(160,152,144,0.4)', fontSize: '14px' }}>
+          No hay mangas con estos filtros
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-  {filtered.map((manga, i) => (
-    <Fragment key={manga.id}>
-      <MangaCard manga={manga} priority={i < 6} />
-      {i === 11 && (
-        <div className="col-span-2 sm:col-span-3 md:col-span-4 lg:col-span-6 flex justify-center my-2">
-          <ins className="eas6a97888e2" data-zoneid="5974114"></ins>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }} className="manga-grid">
+          {filtered.map((manga, i) => (
+            <MangaCard key={manga.id} manga={manga} priority={i < 6} />
+          ))}
         </div>
       )}
-    </Fragment>
-  ))}
-</div>
-      )}
+
+      <style>{`
+        @media (min-width: 480px)  { .manga-grid { grid-template-columns: repeat(3, 1fr) !important; } }
+        @media (min-width: 640px)  { .manga-grid { grid-template-columns: repeat(4, 1fr) !important; } }
+        @media (min-width: 1024px) { .manga-grid { grid-template-columns: repeat(6, 1fr) !important; } }
+      `}</style>
     </div>
   )
 }

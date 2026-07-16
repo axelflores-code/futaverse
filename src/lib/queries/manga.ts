@@ -1,4 +1,3 @@
-
 import { createClient } from '@/lib/supabase/server';
 import type { Manga, PaginatedResponse, MangaSearchParams } from '@/types/manga';
 
@@ -14,6 +13,7 @@ export async function getMangaBySlug(slug: string): Promise<Manga | null> {
       )
     `)
     .eq('slug', slug)
+    .neq('status', 'draft')
     .single();
 
   if (error || !data) return null;
@@ -42,6 +42,9 @@ export async function getMangas(
   if (q) query = query.ilike('title', `%${q}%`);
   if (status) query = query.eq('status', status);
 
+  // Nunca mostrar drafts al público
+  query = query.neq('status', 'draft');
+
   query = query
     .order(sortBy, { ascending: order === 'asc' })
     .range((page - 1) * pageSize, page * pageSize - 1);
@@ -64,6 +67,7 @@ export async function getLatestUpdated(limit = 12): Promise<Manga[]> {
   const { data, error } = await supabase
     .from('mangas')
     .select('*, manga_genres(genres(id, name, slug))')
+    .neq('status', 'draft')
     .order('updated_at', { ascending: false })
     .limit(limit);
 
