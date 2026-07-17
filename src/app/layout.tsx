@@ -6,6 +6,7 @@ import { AgeGateProvider } from '@/components/AgeGateProvider'
 import Script from 'next/script'
 
 
+
 export const metadata: Metadata = {
   metadataBase: new URL('https://mangafuta.com'),
   title: {
@@ -100,9 +101,11 @@ export default function RootLayout({
   src="https://a.magsrv.com/ad-provider.js"
   strategy="lazyOnload"
 />
-<Script id="exoclick-init" strategy="lazyOnload">
-  {`(AdProvider = window.AdProvider || []).push({"serve": {}});`}
-</Script>
+<Script
+  src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
+  strategy="lazyOnload"
+/>
+
       <body className="bg-[#0b0c10] text-white antialiased min-h-screen flex flex-col">
         <AgeGateProvider>
           <Navbar />

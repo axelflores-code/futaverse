@@ -112,6 +112,8 @@ export function MangaReader({
         nextChapter={nextChapter}
       />
 
+      <script src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"></script>
+
       {/* Bottombar — se oculta */}
       <div
         className="transition-opacity duration-500"
