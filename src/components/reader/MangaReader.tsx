@@ -11,6 +11,7 @@ import { ReaderPageList } from './ReaderPageList'
 import { ReaderBottombar } from './ReaderBottombar'
 import { KeyboardHandler } from './KeyboardHandler'
 import type { Chapter, Manga } from '@/types/manga'
+import Script from 'next/script'
 
 interface ChapterNav {
   id: string
@@ -45,6 +46,11 @@ export function MangaReader({
       setUiVisible(false)
     }, 3000)
   }, [])
+
+  const [bannerClosed, setBannerClosed] = useState(() => {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem('adBannerClosed') === 'true';
+});
 
   useEffect(() => {
     resetHideTimer()
@@ -112,7 +118,25 @@ export function MangaReader({
         nextChapter={nextChapter}
       />
 
-      <script src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"></script>
+      {/* Banner Adsterra - una vez por sesión */}
+{!bannerClosed && (
+  <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center">
+    <div className="relative">
+      <button
+        onClick={() => setBannerClosed(true)}
+        className="absolute -top-3 -right-3 z-10 bg-gray-800 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-gray-600"
+      >
+        ✕
+      </button>
+      <Script
+        src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
+        strategy="lazyOnload"
+      />
+    </div>
+  </div>
+)}
+
+
 
       {/* Bottombar — se oculta */}
       <div
