@@ -3,7 +3,6 @@ import './globals.css'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { AgeGateProvider } from '@/components/AgeGateProvider'
-import Script from 'next/script'
 
 
 
@@ -16,6 +15,7 @@ export const metadata: Metadata = {
   description: 'Lee manga futanari y hentai traducido al español. La mejor colección de manga futa en Latino América. Acceso gratuito a cientos de títulos.',
   keywords: [
     'manga futanari español',
+    'mangas futas',
     'manga futa latino',
     'hentai español',
     'manga adulto español',
@@ -97,11 +97,7 @@ export default function RootLayout({
   href="https://cdn-uicons.flaticon.com/2.6.0/uicons-brands/css/uicons-brands.css"
 />
       </head>
-      <Script
-  src="https://a.magsrv.com/ad-provider.js"
-  strategy="lazyOnload"
-/>
-
+   
       <body className="bg-[#0b0c10] text-white antialiased min-h-screen flex flex-col">
         <AgeGateProvider>
           <Navbar />

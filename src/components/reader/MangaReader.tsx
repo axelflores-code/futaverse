@@ -26,6 +26,20 @@ interface MangaReaderProps {
   nextChapter: ChapterNav | null
 }
 
+// ── Frequency capping PopAds: 1 vez cada 24h ──────────────────
+function shouldShowPopAds(): boolean {
+  if (typeof window === 'undefined') return false
+  const last = localStorage.getItem('popads_last_shown')
+  if (!last) return true
+  const diff = Date.now() - parseInt(last, 10)
+  return diff > 24 * 60 * 60 * 1000 // 24 horas
+}
+
+function markPopAdsShown() {
+  if (typeof window === 'undefined') return
+  localStorage.setItem('popads_last_shown', Date.now().toString())
+}
+
 export function MangaReader({
   chapter,
   manga,
@@ -39,6 +53,15 @@ export function MangaReader({
   const [uiVisible, setUiVisible] = useState(true)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Banner Adsterra — una vez por sesión
+  const [bannerClosed, setBannerClosed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return sessionStorage.getItem('adBannerClosed') === 'true'
+  })
+
+  // PopAds — cargar solo si pasaron 24h
+  const [loadPopAds, setLoadPopAds] = useState(false)
+
   const resetHideTimer = useCallback(() => {
     setUiVisible(true)
     if (hideTimer.current) clearTimeout(hideTimer.current)
@@ -46,11 +69,6 @@ export function MangaReader({
       setUiVisible(false)
     }, 3000)
   }, [])
-
-  const [bannerClosed, setBannerClosed] = useState(() => {
-  if (typeof window === 'undefined') return false;
-  return sessionStorage.getItem('adBannerClosed') === 'true';
-});
 
   useEffect(() => {
     resetHideTimer()
@@ -64,6 +82,26 @@ export function MangaReader({
     setTotalPages(chapter.pages.length)
     setPage(0)
   }, [chapter.id, chapter.pages.length, setTotalPages, setPage])
+
+  // Activar PopAds en el primer scroll/clic si corresponde
+  useEffect(() => {
+    if (!shouldShowPopAds()) return
+
+    const handleFirstInteraction = () => {
+      setLoadPopAds(true)
+      markPopAdsShown()
+      window.removeEventListener('scroll', handleFirstInteraction)
+      window.removeEventListener('click', handleFirstInteraction)
+    }
+
+    window.addEventListener('scroll', handleFirstInteraction, { once: true })
+    window.addEventListener('click', handleFirstInteraction, { once: true })
+
+    return () => {
+      window.removeEventListener('scroll', handleFirstInteraction)
+      window.removeEventListener('click', handleFirstInteraction)
+    }
+  }, [])
 
   const handlePageVisible = useCallback(
     (pageIndex: number) => {
@@ -118,25 +156,55 @@ export function MangaReader({
         nextChapter={nextChapter}
       />
 
+      {/* PopAds — se carga tras primer scroll/clic, max 1 vez cada 24h */}
+      {loadPopAds && (
+        <Script
+          id="popads"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function(){
+                var i=window,x="dc9d8b8dbc262cb0af9d8a1ae5b28785",m=
+                [["siteId",186*51+180*146+568+5277143],["minBid",0],
+                ["popundersPerIP","0"],["delayBetween",0],["default",false],
+                ["defaultPerDay",0],["topmostLayer","auto"]],j=
+                "d3d3LmJ1dHRlcmFkc3IzdGVtLmNvbS9obGF2ZS5jc3M=",
+                "ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvaG92
+                Ymt1dGUubWIuLmpz",b=-1,o,e,c=function(){clearTimeout(e);b++;
+                if(j[b]&&!(1810235297000<(new Date).getTime()&&1<b))
+                {o=i.document.createElement("script");o.type="text/javascript";
+                o.async=!0;var p=i.document.getElementsByTagName("script")
+                [0];o.src="https://"+atob(j[b]);o.crossOrigin="anonymous";
+                o.onerror=c;o.onload=function(){clearTimeout(e);
+                i[x.slice(0,16)]||c()};e=setTimeout(c,5E3);
+                p.parentNode.insertBefore(o,p)}else{if(!i[x])
+                {try{Object.freeze(i[x]=m)}catch(e){}}}})();
+              })();
+            `,
+          }}
+        />
+      )}
+
       {/* Banner Adsterra - una vez por sesión */}
-{!bannerClosed && (
-  <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center">
-    <div className="relative">
-      <button
-        onClick={() => setBannerClosed(true)}
-        className="absolute -top-3 -right-3 z-10 bg-gray-800 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-gray-600"
-      >
-        ✕
-      </button>
-      <Script
-        src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
-        strategy="lazyOnload"
-      />
-    </div>
-  </div>
-)}
-
-
+      {!bannerClosed && (
+        <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center">
+          <div className="relative">
+            <button
+              onClick={() => {
+                setBannerClosed(true)
+                sessionStorage.setItem('adBannerClosed', 'true')
+              }}
+              className="absolute -top-3 -right-3 z-10 bg-gray-800 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-gray-600"
+            >
+              ✕
+            </button>
+            <Script
+              src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
+              strategy="lazyOnload"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Bottombar — se oculta */}
       <div
