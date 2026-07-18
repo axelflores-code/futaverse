@@ -150,21 +150,6 @@ export function MangaReader({
         nextChapter={nextChapter}
       />
 
-      {/* NUEVO PopAds (Anti-Adblock) — Carga tras interacción y protege 24h */}
-      {loadPopAds && (
-        <Script
-          id="popads"
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `
-              /*<![CDATA[/* */
-              (function(){var i=window,f="dc9d8b8dbc262cb0af9d8a1ae5b28785",k=[["siteId",651-228+65*594+5274444],["minBid",0],["popundersPerIP","1"],["delayBetween",0],["default",false],["defaultPerDay",0],["topmostLayer","auto"]],o=["d3d3LmJ1dHRlcmFkc3lzdGVtLmNvbS96bGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvZkR6RFl3L3drdXRlLm1pbi5qcw==","d3d3bXByb2h1cmZrc3lzdGVtLmNvbS9zZGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvaG92Ymt1dGUubWluLmpz"],u=-1,g,w,s=function(){clearTimeout(w);u++;if(o[u]&&!(1810251964000<(new Date).getTime()&&1<u)){g=i.document.createElement("script");g.type="text/javascript";g.async=!0;var h=i.document.getElementsByTagName("script")[0];g.src="https://"+atob(o[u]);g.crossOrigin="anonymous";g.onerror=s;g.onload=function(){clearTimeout(w);i[f.slice(0,16)+f.slice(0,16)]||s()};w=setTimeout(s,5E3);h.parentNode.insertBefore(g,h)}};if(!i[f]){try{Object.freeze(i[f]=k)}catch(e){}s()}})();
-              /*]]>/* */
-            `,
-          }}
-        />
-      )}
-
       {/* Banner Adsterra nativo */}
       <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center pointer-events-none">
         <div className="pointer-events-auto">
