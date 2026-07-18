@@ -1,20 +1,43 @@
+// src/app/tag/[slug]/page.tsx
+
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
-import { MangaCard } from '@/components/manga/MangaCard'
-import Link from 'next/link'
-import type { Manga } from '@/types/manga'
+import { notFound }     from 'next/navigation'
+import { MangaCard }    from '@/components/manga/MangaCard'
+import { Pagination }   from '@/components/ui/Pagination'
+import Link             from 'next/link'
+import type { Manga }   from '@/types/manga'
 
+interface PageProps {
+  params:      Promise<{ slug: string }>
+  searchParams: Promise<{ page?: string }>
+}
 
-export const revalidate = 3600
-export default async function TagPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>
-}) {
-  const { slug } = await params
+const PAGE_SIZE = 24
+
+interface MangaRow {
+  id: string; slug: string; title: string; cover_url: string | null
+  status: string; score: number; rating: string; description: string | null
+  views: number; created_at: string; updated_at: string; author: string | null
+  manga_genres: Array<{ genres: { id: string; name: string; slug: string } }>
+}
+
+const NS_LABELS: Record<string, string> = {
+  theme:           'Tema',
+  trope:           'Tropo',
+  setting:         'Ambientación',
+  format:          'Formato',
+  content_warning: 'Advertencia de contenido',
+}
+
+export default async function TagPage({ params, searchParams }: PageProps) {
+  const { slug }  = await params
+  const { page: pageParam } = await searchParams
+  const currentPage = Math.max(1, Number(pageParam ?? 1))
+  const from = (currentPage - 1) * PAGE_SIZE
+  const to   = from + PAGE_SIZE - 1
+
   const supabase = await createClient()
 
-  // Buscar el tag
   const { data: tag } = await supabase
     .from('tags')
     .select('*')
@@ -23,91 +46,101 @@ export default async function TagPage({
 
   if (!tag) notFound()
 
-  // Buscar mangas con este tag
-  const { data: mangaTags } = await supabase
+  // Contar total
+  const { count } = await supabase
     .from('manga_tags')
-    .select(`
-      mangas (
-        id, slug, title, cover_url, status, score, rating,
-        description, views, created_at, updated_at, autor,
-        manga_genres ( genres ( id, name, slug ) )
-      )
-    `)
+    .select('*', { count: 'exact', head: true })
     .eq('tag_id', tag.id)
 
-  const mangas: Manga[] = (mangaTags ?? [])
-    .map((mt: Record<string, unknown>) => {
-      const m = mt.mangas as Record<string, unknown>
-      if (!m) return null
-      return {
-        id:                m.id as string,
-        slug:              m.slug as string,
-        title:             m.title as string,
-        coverUrl:          m.cover_url as string | null,
-        status:            m.status as Manga['status'],
-        score:             m.score as number,
-        rating:            m.rating as Manga['rating'],
-        description:       m.description as string | null,
-        views:             m.views as bigint,
-        author:           m.autor as string | null,
-        artist:           null,
-        alternativeTitles: [],
-        genres: ((m.manga_genres as Array<{ genres: { id: string; name: string; slug: string } }>) ?? [])
-          .map(mg => mg.genres),
-        createdAt:  m.created_at as string,
-        updatedAt:  m.updated_at as string,
-      }
-    })
-    .filter(Boolean) as Manga[]
+  // Obtener mangas paginados
+  const { data: mangaTags } = await supabase
+    .from('manga_tags')
+    .select('mangas(*, manga_genres(genres(id, name, slug)))')
+    .eq('tag_id', tag.id)
+    .range(from, to)
 
-  const NS_LABELS: Record<string, string> = {
-    theme:           'Tema',
-    trope:           'Tropo',
-    setting:         'Ambientación',
-    format:          'Formato',
-    content_warning: 'Advertencia de contenido',
-  }
+  const total      = count ?? 0
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+
+  const mangas: Manga[] = ((mangaTags ?? []) as unknown as Array<{ mangas: MangaRow }>)
+    .map(mt => mt.mangas)
+    .filter(Boolean)
+    .map((m: MangaRow) => ({
+      id:                m.id,
+      slug:              m.slug,
+      title:             m.title,
+      coverUrl:          m.cover_url,
+      status:            m.status as Manga['status'],
+      score:             m.score,
+      rating:            m.rating as Manga['rating'],
+      description:       m.description,
+      views:             BigInt(m.views),
+      author:            m.author,
+      artist:            null,
+      alternativeTitles: [],
+      genres:            (m.manga_genres ?? []).map(mg => mg.genres),
+      createdAt:         m.created_at,
+      updatedAt:         m.updated_at,
+    }))
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 16px' }}>
+
+      {/* Volver */}
+      <Link
+        href="/manga"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: 'rgba(96,88,80,1)', textDecoration: 'none', marginBottom: '20px' }}
+      >
+        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Catálogo
+      </Link>
 
       {/* Header */}
-      <div className="mb-8">
-        <Link
-          href="/manga"
-          className="text-xs text-zinc-600 hover:text-zinc-400 flex items-center gap-1 mb-4 transition-colors"
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
-          </svg>
-          Catálogo
-        </Link>
-
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-            {NS_LABELS[tag.namespace] ?? tag.namespace}
-          </span>
-        </div>
-
-        <h1 className="text-3xl font-bold text-white mb-1">{tag.name}</h1>
-        <p className="text-zinc-500 text-sm">
-          {mangas.length} manga{mangas.length !== 1 ? 's' : ''} con este tag
+      <div style={{ marginBottom: '28px' }}>
+        <p style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', color: '#3D5A9E', marginBottom: '6px' }}>
+          {NS_LABELS[tag.namespace] ?? tag.namespace}
+        </p>
+        <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#f0ece8', marginBottom: '6px' }}>
+          {tag.name}
+        </h1>
+        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.6)' }}>
+          {total} manga{total !== 1 ? 's' : ''} con este tag
         </p>
       </div>
 
       {/* Grid */}
       {mangas.length === 0 ? (
-        <div className="text-center py-20">
-          <p className="text-zinc-600">No hay mangas con el tag "{tag.name}" todavía.</p>
+        <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(160,152,144,0.4)', fontSize: '14px' }}>
+          No hay mangas con el tag "{tag.name}" todavía.
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {mangas.map((manga, i) => (
-            <MangaCard key={manga.id} manga={manga} priority={i < 6} />
-          ))}
-        </div>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', marginBottom: '40px' }} className="tag-page-grid">
+            {mangas.map((manga, i) => (
+              <MangaCard key={manga.id} manga={manga} priority={i < 6} />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                basePath={`/tag/${slug}`}
+                searchParams={{}}
+              />
+            </div>
+          )}
+        </>
       )}
 
+      <style>{`
+        @media (max-width: 1024px) { .tag-page-grid { grid-template-columns: repeat(4, 1fr) !important; } }
+        @media (max-width: 640px)  { .tag-page-grid { grid-template-columns: repeat(3, 1fr) !important; } }
+        @media (max-width: 480px)  { .tag-page-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+      `}</style>
     </div>
   )
 }

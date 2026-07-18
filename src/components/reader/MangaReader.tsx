@@ -53,12 +53,6 @@ export function MangaReader({
   const [uiVisible, setUiVisible] = useState(true)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Banner Adsterra — una vez por sesión
-  const [bannerClosed, setBannerClosed] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return sessionStorage.getItem('adBannerClosed') === 'true'
-  })
-
   // PopAds — cargar solo si pasaron 24h
   const [loadPopAds, setLoadPopAds] = useState(false)
 
@@ -156,54 +150,30 @@ export function MangaReader({
         nextChapter={nextChapter}
       />
 
-      {/* PopAds — se carga tras primer scroll/clic, max 1 vez cada 24h */}
+      {/* NUEVO PopAds (Anti-Adblock) — Carga tras interacción y protege 24h */}
       {loadPopAds && (
         <Script
           id="popads"
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              (function(){
-                var i=window,x="dc9d8b8dbc262cb0af9d8a1ae5b28785",m=
-                [["siteId",186*51+180*146+568+5277143],["minBid",0],
-                ["popundersPerIP","1"],["delayBetween",0],["default",false],
-                ["defaultPerDay",0],["topmostLayer","auto"]],j=
-                ["d3d3LmJ1dHRlcmFkc3IzdGVtLmNvbS9obGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvaG92Ymt1dGUubWIuLmpz"],
-                b=-1,o,e,c=function(){clearTimeout(e);b++;
-                if(j[b]&&!(1810235297000<(new Date).getTime()&&1<b))
-                {o=i.document.createElement("script");o.type="text/javascript";
-                o.async=!0;var p=i.document.getElementsByTagName("script")[0];
-                o.src="https://"+atob(j[b]);o.crossOrigin="anonymous";
-                o.onerror=c;o.onload=function(){clearTimeout(e);
-                i[x.slice(0,16)]||c()};e=setTimeout(c,5E3);
-                p.parentNode.insertBefore(o,p)}else{if(!i[x])
-                {try{Object.freeze(i[x]=m)}catch(e){}}}})();
-              })();
+              /*<![CDATA[/* */
+              (function(){var i=window,f="dc9d8b8dbc262cb0af9d8a1ae5b28785",k=[["siteId",651-228+65*594+5274444],["minBid",0],["popundersPerIP","1"],["delayBetween",0],["default",false],["defaultPerDay",0],["topmostLayer","auto"]],o=["d3d3LmJ1dHRlcmFkc3lzdGVtLmNvbS96bGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvZkR6RFl3L3drdXRlLm1pbi5qcw==","d3d3bXByb2h1cmZrc3lzdGVtLmNvbS9zZGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvaG92Ymt1dGUubWluLmpz"],u=-1,g,w,s=function(){clearTimeout(w);u++;if(o[u]&&!(1810251964000<(new Date).getTime()&&1<u)){g=i.document.createElement("script");g.type="text/javascript";g.async=!0;var h=i.document.getElementsByTagName("script")[0];g.src="https://"+atob(o[u]);g.crossOrigin="anonymous";g.onerror=s;g.onload=function(){clearTimeout(w);i[f.slice(0,16)+f.slice(0,16)]||s()};w=setTimeout(s,5E3);h.parentNode.insertBefore(g,h)}};if(!i[f]){try{Object.freeze(i[f]=k)}catch(e){}s()}})();
+              /*]]>/* */
             `,
           }}
         />
       )}
 
-      {/* Banner Adsterra - una vez por sesión */}
-      {!bannerClosed && (
-        <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center">
-          <div className="relative">
-            <button
-              onClick={() => {
-                setBannerClosed(true)
-                sessionStorage.setItem('adBannerClosed', 'true')
-              }}
-              className="absolute -top-3 -right-3 z-10 bg-gray-800 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-gray-600"
-            >
-              ✕
-            </button>
-            <Script
-              src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
-              strategy="lazyOnload"
-            />
-          </div>
+      {/* Banner Adsterra nativo */}
+      <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center pointer-events-none">
+        <div className="pointer-events-auto">
+          <Script
+            src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
+            strategy="lazyOnload"
+          />
         </div>
-      )}
+      </div>
 
       {/* Bottombar — se oculta */}
       <div
