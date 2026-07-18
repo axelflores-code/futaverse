@@ -54,7 +54,7 @@ export function MangaReader({
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // PopAds — cargar solo si pasaron 24h
-  const [loadPopAds, setLoadPopAds] = useState(false)
+  const [loadPopAds, setLoadPopAds] = useState(true)
 
   const resetHideTimer = useCallback(() => {
     setUiVisible(true)
