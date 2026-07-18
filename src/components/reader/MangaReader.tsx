@@ -26,20 +26,6 @@ interface MangaReaderProps {
   nextChapter: ChapterNav | null
 }
 
-// ── Frequency capping PopAds: 1 vez cada 24h ──────────────────
-function shouldShowPopAds(): boolean {
-  if (typeof window === 'undefined') return false
-  const last = localStorage.getItem('popads_last_shown')
-  if (!last) return true
-  const diff = Date.now() - parseInt(last, 10)
-  return diff > 24 * 60 * 60 * 1000 // 24 horas
-}
-
-function markPopAdsShown() {
-  if (typeof window === 'undefined') return
-  localStorage.setItem('popads_last_shown', Date.now().toString())
-}
-
 export function MangaReader({
   chapter,
   manga,
@@ -52,9 +38,6 @@ export function MangaReader({
   // Auto-hide UI
   const [uiVisible, setUiVisible] = useState(true)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // PopAds — cargar solo si pasaron 24h
-  const [loadPopAds, setLoadPopAds] = useState(false)
 
   const resetHideTimer = useCallback(() => {
     setUiVisible(true)
@@ -76,26 +59,6 @@ export function MangaReader({
     setTotalPages(chapter.pages.length)
     setPage(0)
   }, [chapter.id, chapter.pages.length, setTotalPages, setPage])
-
-  // Activar PopAds en el primer scroll/clic si corresponde
-  useEffect(() => {
-    if (!shouldShowPopAds()) return
-
-    const handleFirstInteraction = () => {
-      setLoadPopAds(true)
-      markPopAdsShown()
-      window.removeEventListener('scroll', handleFirstInteraction)
-      window.removeEventListener('click', handleFirstInteraction)
-    }
-
-    window.addEventListener('scroll', handleFirstInteraction, { once: true })
-    window.addEventListener('click', handleFirstInteraction, { once: true })
-
-    return () => {
-      window.removeEventListener('scroll', handleFirstInteraction)
-      window.removeEventListener('click', handleFirstInteraction)
-    }
-  }, [])
 
   const handlePageVisible = useCallback(
     (pageIndex: number) => {
@@ -150,15 +113,8 @@ export function MangaReader({
         nextChapter={nextChapter}
       />
 
-      {/* Banner Adsterra nativo */}
-      <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <div className="pointer-events-auto">
-          <Script
-            src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
-            strategy="lazyOnload"
-          />
-        </div>
-      </div>
+      {/* Banner Adsterra nativo con Auto-Limpieza al salir */}
+      <AdsterraBannerWithCleanup />
 
       {/* Bottombar — se oculta */}
       <div
@@ -183,4 +139,28 @@ export function MangaReader({
       </div>
     </div>
   )
+}
+
+// Componente auxiliar para forzar la eliminación del banner al salir del lector
+function AdsterraBannerWithCleanup() {
+  useEffect(() => {
+    return () => {
+      // Remueve iframes y scripts residuales que Adsterra inyecta fuera de React
+      const elementsToCleanup = document.querySelectorAll(
+        'iframe[src*="effectivecpmnetwork"], script[src*="effectivecpmnetwork"], [id^="at_"]'
+      );
+      elementsToCleanup.forEach((el) => el.remove());
+    };
+  }, []);
+
+  return (
+    <div className="fixed bottom-16 left-0 right-0 z-50 flex justify-center pointer-events-none">
+      <div className="pointer-events-auto">
+        <Script
+          src="https://pl30401168.effectivecpmnetwork.com/71/2d/71/712d71cf118ac18e499ea6141d17258f.js"
+          strategy="lazyOnload"
+        />
+      </div>
+    </div>
+  );
 }

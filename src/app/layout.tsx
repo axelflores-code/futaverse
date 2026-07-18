@@ -3,7 +3,6 @@ import './globals.css'
 import { Navbar } from '@/components/layout/Navbar'
 import { Footer } from '@/components/layout/Footer'
 import { AgeGateProvider } from '@/components/AgeGateProvider'
-import Script from 'next/script'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://mangafuta.com'),
