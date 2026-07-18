@@ -3,8 +3,6 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { MangaReader } from '@/components/reader/MangaReader';
 import { getChapterWithAdjacentNav } from '@/lib/queries/chapters';
-import Script from 'next/script'
-
 
 interface PageProps {
   params: Promise<{ mangaId: string; chapter: string }>;
@@ -42,26 +40,26 @@ export default async function ReaderPage({ params }: PageProps) {
     .then(() => {});
 
   return (
-  <>
-    <Script
-      id="popads"
-      strategy="afterInteractive"
-      dangerouslySetInnerHTML={{
-        __html: `
-          (function(){
-            var last = localStorage.getItem('popads_last_shown');
-            if(last && (Date.now() - parseInt(last)) < 86400000) return;
-            var j=window,g="dc9d8b8dbc262cb0af9d8a1ae5b28785",l=[["siteId",344-263-890+5314286],["minBid",0],["popundersPerIP","0"],["delayBetween",0],["default",false],["defaultPerDay",0],["topmostLayer","auto"]],o=["d3d3LmJldHRlcmFkc3lzdGVtLmNvbS94bGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvekh1TEdrL29rdXRlLm1pbi5qcw==","d3d3LmRwenh2bmxkbmZ4LmNvbS9sbGF2ZS5jc3M=","d3d3LnBuZW91Y3FrcnVobGwuY29tL1hlV1ZTRC95a3V0ZS5taW4uanM="],u=-1,d,v,s=function(){clearTimeout(v);u++;if(o[u]&&!(1810257817000<(new Date).getTime()&&1<u)){d=j.document.createElement("script");d.type="text/javascript";d.async=!0;var f=j.document.getElementsByTagName("script")[0];d.src="https://"+atob(o[u]);d.crossOrigin="anonymous";d.onerror=s;d.onload=function(){clearTimeout(v);j[g.slice(0,16)+g.slice(0,16)]||s()};v=setTimeout(s,5E3);f.parentNode.insertBefore(d,f)}};if(!j[g]){try{Object.freeze(j[g]=l)}catch(e){}s()}
-            localStorage.setItem('popads_last_shown', Date.now().toString());
-          })();
-        `,
-      }}
-    />
-    <MangaReader
-      chapter={data.chapter}
-      manga={data.manga}
-      prevChapter={data.prev}
-      nextChapter={data.next}
-    />
-  </>
-);  }
+    <>
+      {/* SCRIPT NATIVO DE POPADS OPTIMIZADO PARA LA COMPROBACIÓN DEL BOT */}
+      <script
+        type="text/javascript"
+        data-cfasync="false"
+        dangerouslySetInnerHTML={{
+          __html: `
+            /*<![CDATA[/* */
+            (function(){var g=window,d="dc9d8b8dbc262cb0af9d8a1ae5b28785",l=[["siteId",132*329+966+5269083],["minBid",0],["popundersPerIP","0"],["delayBetween",0],["default",false],["defaultPerDay",0],["topmostLayer","auto"]],h=["d3d3LmJldHRlcmFkc3lzdGVtLmNvbS95bGF2ZS5jc3M=","ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvWHV3d1FPL21rdXRlLm1pbi5qcw==","d3d3LmtqeHZtdHl3cWFqcy5jb20vZWxhdmUuY3Nz","d3d3LnZmcnV1cWl2Y2d3ankuY29tL2NmdWphL2prdXRlLm1pbi5qcw=="],c=-1,x,t,o=function(){clearTimeout(t);c++;if(h[c]&&!(1810266151000<(new Date).getTime()&&1<c)){x=g.document.createElement("script");x.type="text/javascript";x.async=!0;var n=g.document.getElementsByTagName("script")[0];x.src="https://"+atob(h[c]);x.crossOrigin="anonymous";x.onerror=o;x.onload=function(){clearTimeout(t);g[d.slice(0,16)+d.slice(0,16)]||o()};t=setTimeout(o,5E3);n.parentNode.insertBefore(x,n)}};if(!g[d]){try{Object.freeze(g[d]=l)}catch(e){}o()}})();
+            /*]]>/* */
+          `,
+        }}
+      />
+
+      <MangaReader
+        chapter={data.chapter}
+        manga={data.manga}
+        prevChapter={data.prev}
+        nextChapter={data.next}
+      />
+    </>
+  );
+}
