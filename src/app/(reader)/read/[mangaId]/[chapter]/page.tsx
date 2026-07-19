@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { MangaReader } from '@/components/reader/MangaReader';
 import { getChapterWithAdjacentNav } from '@/lib/queries/chapters';
+import Script from 'next/script'
 
 interface PageProps {
   params: Promise<{ mangaId: string; chapter: string }>;
@@ -41,16 +42,11 @@ export default async function ReaderPage({ params }: PageProps) {
 
   return (
     <>
-      <script
-        type="text/javascript"
-        data-cfasync="false"
-        dangerouslySetInnerHTML={{
-          __html: 
-            "/*<![CDATA[/* */\n" +
-            "(function(){var l=window,i=\"dc9d8b8dbc262cb0af9d8a1ae5b28785\",w=[[\"siteId\",647-455-335*655-315+5533025],[\"minBid\",0],[\"popundersPerIP\",\"0\"],[\"delayBetween\",0],[\"default\",false],[\"defaultPerDay\",0],[\"topmostLayer\",\"auto\"]],h=[\"d3d3LmJldHRlcmFkc3lzdGVtLmNvbS9tbGF2ZS5jc3M=\",\"ZDJrazBvM2ZyN2VkMDEuY2xvdWRmcm9udC5uZXQvZEZwRkIveWt1dGUubWluLmpz\",\"d3d3Lmh6YmJkdG92LmNvbS93bGF2ZS5jc3M=\",\"d3d3LmtqeHZtdHl3cWFqcy5jb20vUkdpcC9va3V0ZS5taW4uanM=\"],b=-1,q,m,d=function(){clearTimeout(m);b++;if(h[b]&&!(1810267957000<(new Date).getTime()&&1<b)){q=l.document.createElement(\"script\");q.type=\"text/javascript\";q.async=!0;var f=l.document.getElementsByTagName(\"script\")[0];q.src=\"https://\"+atob(h[b]);q.crossOrigin=\"anonymous\";q.onerror=d;q.onload=function(){clearTimeout(m);l[i.slice(0,16)+i.slice(0,16)]||d()};m=setTimeout(d,5E3);f.parentNode.insertBefore(q,f)}};if(!l[i]){try{Object.freeze(l[i]=w)}catch(e){}d()}})();\n" +
-            "/*]]>/* */"
-        }}
-      />
+      <Script
+  id="popads"
+  src="/popads.js"
+  strategy="afterInteractive"
+/>
 
       <MangaReader
         chapter={data.chapter}
