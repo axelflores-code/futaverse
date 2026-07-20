@@ -18,8 +18,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${data.manga.title} — Capítulo ${chapter}`,
     description: `Lee ${data.manga.title} capítulo ${chapter} gratis en MangaFuta.`,
-    robots: { index: false },
-  };
+    robots: { index: true, follow: true }, // o directamente omite la propiedad "robots"
+};
 }
 
 export default async function ReaderPage({ params }: PageProps) {
