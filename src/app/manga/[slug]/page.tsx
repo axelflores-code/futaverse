@@ -31,14 +31,42 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     .select('title, description, cover_url')
     .eq('slug', slug)
     .single()
+
   if (!manga) return { title: 'Manga no encontrado' }
+
+  const title = manga.title
+  const description = manga.description ?? `Lee ${title} en MangaFuta. Manga futanari en español gratis.`
+
   return {
-    title:       manga.title,
-    description: manga.description ?? `Lee ${manga.title} en MangaFuta.`,
+    title,
+    description,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+      },
+    },
+    alternates: {
+      canonical: `https://mangafuta.com/manga/${slug}`,
+    },
     openGraph: {
-      title:       manga.title,
-      description: manga.description ?? '',
-      images:      manga.cover_url ? [{ url: manga.cover_url }] : [],
+      title,
+      description,
+      type: 'book',
+      url: `https://mangafuta.com/manga/${slug}`,
+      siteName: 'MangaFuta',
+      locale: 'es_LA',
+      images: manga.cover_url ? [{ url: manga.cover_url, alt: title }] : [],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: manga.cover_url ? [manga.cover_url] : [],
     },
   }
 }
@@ -137,7 +165,6 @@ export default async function MangaDetailPage({ params }: PageProps) {
               )}
             </div>
           </div>
-          
 
           {/* Info */}
           <div className="flex-1 min-w-0">
@@ -190,8 +217,6 @@ export default async function MangaDetailPage({ params }: PageProps) {
               </p>
             )}
 
-            
-
             {/* Tags por namespace */}
             {Object.entries(tagsByNs).map(([ns, nsTags]: [string, TagItem[]]) => (
               <div key={ns} className="mb-4">
@@ -218,13 +243,13 @@ export default async function MangaDetailPage({ params }: PageProps) {
           </div>
         </div>
 
-                {/* Puntuación */}
-<div className="py-5 border-y border-white/5 my-5">
-  <MangaScore
-    mangaId={manga.id}
-    currentScore={manga.score}
-  />
-</div>
+        {/* Puntuación */}
+        <div className="py-5 border-y border-white/5 my-5">
+          <MangaScore
+            mangaId={manga.id}
+            currentScore={manga.score}
+          />
+        </div>
 
         {/* Capítulos */}
         <section>
@@ -248,39 +273,24 @@ export default async function MangaDetailPage({ params }: PageProps) {
           />
         </section>
 
-        {/* Botón de favoritos */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-  <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_COLOR[manga.status] ?? ''}`}>
-    {STATUS_LABEL[manga.status] ?? manga.status}
-  </span>
-  {manga.score > 0 && (
-    <span className="text-xs text-yellow-400 flex items-center gap-1">
-      ★ <span className="font-semibold">{manga.score.toFixed(1)}</span>
-    </span>
-  )}
-  <span className="text-xs text-zinc-600">
-    {formatNumber(manga.views)} vistas
-  </span>
-</div>
+        {/* Botón favorito */}
+        <div className="mb-5">
+          <FavoriteButton mangaId={manga.id} />
+        </div>
 
-{/* Botón favorito */}
-<div className="mb-5">
-  <FavoriteButton mangaId={manga.id} />
-</div>
-
-{/* Galería de páginas */}
-<MangaPageGallery
-  chapters={chapters.map((c: ChapterItem) => ({
-    id:        c.id,
-    mangaId:   c.manga_id,
-    number:    c.number,
-    title:     c.title,
-    pages:     c.pages,
-    views:     BigInt(c.views),
-    createdAt: c.created_at,
-  }))}
-  mangaSlug={slug}
-/>
+        {/* Galería de páginas */}
+        <MangaPageGallery
+          chapters={chapters.map((c: ChapterItem) => ({
+            id:        c.id,
+            mangaId:   c.manga_id,
+            number:    c.number,
+            title:     c.title,
+            pages:     c.pages,
+            views:     BigInt(c.views),
+            createdAt: c.created_at,
+          }))}
+          mangaSlug={slug}
+        />
         
       </div>
     </>
