@@ -12,10 +12,10 @@ export const metadata: Metadata = {
   },
   description: 'La mejor colección de manga futanari traducido al español. La mejor colección de manga futa en Latino América. Acceso gratuito a cientos de títulos.',
   keywords: [
-    'manga futanari español',
+    'manga futanari',
     'manga futa latino',
     'hentai español',
-    'manga adulto español',
+    'manga futa español',
     'futanari manga online',
     'manga futa gratis',
     'dickgirl manga español',

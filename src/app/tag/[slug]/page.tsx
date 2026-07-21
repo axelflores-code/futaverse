@@ -1,5 +1,6 @@
 // src/app/tag/[slug]/page.tsx
 
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { notFound }     from 'next/navigation'
 import { MangaCard }    from '@/components/manga/MangaCard'
@@ -27,6 +28,69 @@ const NS_LABELS: Record<string, string> = {
   setting:         'Ambientación',
   format:          'Formato',
   content_warning: 'Advertencia de contenido',
+}
+
+// ── SEO Metadata ─────────────────────────────────────────────────
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params
+  const supabase = await createClient()
+
+  const { data: tag } = await supabase
+    .from('tags')
+    .select('name, slug, namespace')
+    .eq('slug', slug)
+    .single()
+
+  if (!tag) return { title: 'Tag no encontrado' }
+
+  const { count } = await supabase
+    .from('manga_tags')
+    .select('*', { count: 'exact', head: true })
+    .eq('tag_id', (await supabase.from('tags').select('id').eq('slug', slug).single()).data?.id)
+
+  const total = count ?? 0
+  const tagName = tag.name
+  const title = `Manga ${tagName} en Español — MangaFuta`
+  const description = `Lee los mejores manga ${tagName} traducidos al español. ${total} títulos de ${tagName} disponibles gratis en MangaFuta. La mejor colección de manga ${tagName} para Latino América.`
+
+  return {
+    title,
+    description,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+      },
+    },
+    alternates: {
+      canonical: `https://mangafuta.com/tag/${slug}`,
+    },
+    openGraph: {
+      title,
+      description,
+      type: 'website',
+      url: `https://mangafuta.com/tag/${slug}`,
+      siteName: 'MangaFuta',
+      locale: 'es_LA',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+    keywords: [
+      `manga ${tagName} español`,
+      `${tagName} manga latino`,
+      `${tagName} hentai español`,
+      `leer manga ${tagName}`,
+      `manga ${tagName} gratis`,
+      `${tagName} en español`,
+    ],
+  }
 }
 
 export default async function TagPage({ params, searchParams }: PageProps) {
@@ -107,6 +171,12 @@ export default async function TagPage({ params, searchParams }: PageProps) {
         </h1>
         <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.6)' }}>
           {total} manga{total !== 1 ? 's' : ''} con este tag
+        </p>
+
+        {/* Descripción SEO visible — ayuda a Google a entender la página */}
+        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.4)', marginTop: '8px', maxWidth: '600px' }}>
+          Explora nuestra colección de manga <strong style={{ color: 'rgba(160,152,144,0.6)' }}>{tag.name}</strong> traducido al español. 
+          Acceso gratuito a los mejores títulos para el público latino.
         </p>
       </div>
 

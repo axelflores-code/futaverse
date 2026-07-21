@@ -1,15 +1,60 @@
 // src/app/page.tsx
 
-import { Suspense }              from 'react'
+
+import type { Metadata }             from 'next'
 import { createClient }          from '@/lib/supabase/server'
 import { MangaHeroCarousel }     from '@/components/manga/MangaHeroCarousel'
 import { MangaRowScroll }        from '@/components/manga/MangaRowScroll'
 import { MangaCard }             from '@/components/manga/MangaCard'
-import { Skeleton }              from '@/components/ui/Skeleton'
 import Link                      from 'next/link'
 import type { Manga }            from '@/types/manga'
 
 export const revalidate = 3600
+
+export const metadata: Metadata = {
+  title: 'MangaFuta — Manga Futanari en Español | Lee Gratis',
+  description: 'La mejor plataforma de manga futanari traducido al español para Latino América. Lee cientos de títulos de manga futa, dickgirl y hentai en español completamente gratis.',
+  keywords: [
+    'manga futanari español',
+    'manga futa gratis',
+    'futanari manga latino',
+    'manga dickgirl español',
+    'hentai español gratis',
+    'manga futa online',
+    'leer manga futanari',
+    'manga +18 español',
+    'manga hentai latino gratis',
+    'futanari en español',
+  ],
+  alternates: {
+    canonical: 'https://mangafuta.com',
+  },
+  openGraph: {
+    title: 'MangaFuta — Manga Futanari en Español',
+    description: 'La mejor plataforma de manga futanari traducido al español para Latino América. Lee gratis.',
+    url: 'https://mangafuta.com',
+    siteName: 'MangaFuta',
+    locale: 'es_LA',
+    type: 'website',
+    images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: 'MangaFuta' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'MangaFuta — Manga Futanari en Español',
+    description: 'La mejor plataforma de manga futanari traducido al español para Latino América.',
+    images: ['/og-image.jpg'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+}
 
 function mapManga(m: Record<string, unknown>): Manga {
   return {
@@ -44,18 +89,21 @@ export default async function HomePage() {
     supabase
       .from('mangas')
       .select('*, manga_genres(genres(id,name,slug))')
+      .neq('status', 'draft')
       .order('score', { ascending: false })
       .limit(6),
     supabase
       .from('mangas')
       .select('*, manga_genres(genres(id,name,slug))')
+      .neq('status', 'draft')
       .order('views', { ascending: false })
       .limit(12),
     supabase
       .from('mangas')
       .select('*, manga_genres(genres(id,name,slug))')
+      .neq('status', 'draft')
       .order('updated_at', { ascending: false })
-      .limit(14), // 7 columnas × 2 filas
+      .limit(14),
     supabase
       .from('tags')
       .select('id, name, slug, namespace, usage_count')
@@ -68,7 +116,6 @@ export default async function HomePage() {
   const popularMangas = (popularRaw ?? []).map(mapManga)
   const latestMangas  = (latestRaw  ?? []).map(mapManga)
 
-  // Para cada tag popular, buscar 6 mangas
   const tagSections = await Promise.all(
     (topTags ?? []).slice(0, 3).map(async (tag) => {
       const { data: mangaTags } = await supabase
@@ -91,6 +138,15 @@ export default async function HomePage() {
       {/* Hero carousel — full width */}
       <MangaHeroCarousel mangas={heroMangas} />
 
+      {/* Texto SEO visible para Google */}
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px 0' }}>
+        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.4)', lineHeight: 1.6 }}>
+          Bienvenido a <strong style={{ color: 'rgba(160,152,144,0.6)' }}>MangaFuta</strong> — 
+          la plataforma líder de <strong style={{ color: 'rgba(160,152,144,0.6)' }}>manga futanari en español</strong> para Latino América. 
+          Lee gratis los mejores títulos de manga futa, dickgirl y hentai traducidos al español.
+        </p>
+      </div>
+
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
 
         {/* Popular hoy */}
@@ -100,7 +156,7 @@ export default async function HomePage() {
           href="/manga?sortBy=views"
         />
 
-        {/* Últimas actualizaciones — 7 columnas */}
+        {/* Últimas actualizaciones */}
         <section style={{ marginBottom: '48px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -141,7 +197,7 @@ export default async function HomePage() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }} className="tag-grid">
-                {mangas.map((manga, i) => (
+                {mangas.map((manga) => (
                   <MangaCard key={manga.id} manga={manga} priority={false} />
                 ))}
               </div>
@@ -149,7 +205,7 @@ export default async function HomePage() {
           )
         })}
 
-        {/* Explorar todos los tags */}
+        {/* Tags populares */}
         <section style={{ marginBottom: '48px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'center', gap: '10px' }}>

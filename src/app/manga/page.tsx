@@ -1,5 +1,6 @@
 // src/app/manga/page.tsx
 
+import type { Metadata }   from 'next'
 import { createClient }    from '@/lib/supabase/server'
 import { getAllCategories } from '@/lib/queries/categories'
 import { getAllTags }       from '@/lib/queries/tag'
@@ -14,6 +15,41 @@ const PAGE_SIZE = 24
 
 type Period = 'today' | 'week' | 'month' | 'all'
 type Status = 'ongoing' | 'completed' | 'hiatus' | ''
+
+export const metadata: Metadata = {
+  title: 'Catálogo de Manga Futanari en Español — MangaFuta',
+  description: 'Explora cientos de títulos de manga futanari, futa y hentai traducidos al español. Filtra por popularidad, estado y géneros. Actualizado diariamente.',
+  keywords: [
+    'catálogo manga futanari español',
+    'manga futa completo',
+    'lista manga hentai español',
+    'manga futanari online gratis',
+    'todos los manga futa español',
+    'manga dickgirl latino',
+    'manga adulto español completo',
+  ],
+  alternates: {
+    canonical: 'https://mangafuta.com/manga',
+  },
+  openGraph: {
+    title: 'Catálogo de Manga Futanari en Español — MangaFuta',
+    description: 'Explora cientos de títulos de manga futanari traducidos al español. Actualizado diariamente.',
+    url: 'https://mangafuta.com/manga',
+    siteName: 'MangaFuta',
+    locale: 'es_LA',
+    type: 'website',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+}
 
 function mapManga(m: Record<string, unknown>): Manga {
   return {
@@ -68,7 +104,7 @@ export default async function CatalogPage({
     const { data: popularIds } = await supabase.rpc('get_popular_mangas', { period, lim: 200 })
     if (popularIds && popularIds.length > 0) {
       const ids = popularIds.map((r: { manga_id: string }) => r.manga_id)
-      let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).in('id', ids)
+      let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).in('id', ids).neq('status', 'draft')
       if (status) query = query.eq('status', status)
       const { data, count } = await query.range(from, to)
       total  = count ?? 0
@@ -77,7 +113,7 @@ export default async function CatalogPage({
     }
   } else {
     const sortColumn = sortBy === 'score' ? 'score' : sortBy === 'views' ? 'views' : sortBy === 'createdAt' ? 'created_at' : 'updated_at'
-    let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).order(sortColumn, { ascending: false }).range(from, to)
+    let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).neq('status', 'draft').order(sortColumn, { ascending: false }).range(from, to)
     if (status) query = query.eq('status', status)
     const { data, count } = await query
     total  = count ?? 0
@@ -93,11 +129,14 @@ export default async function CatalogPage({
       {/* Header */}
       <div style={{ marginBottom: '28px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-          Catálogo
+          Catálogo de Manga Futanari en Español
           <span style={{ fontSize: '14px', fontWeight: 400, color: 'rgba(160,152,144,0.5)' }}>
             ({total} títulos)
           </span>
         </h1>
+        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.4)', marginTop: '6px' }}>
+          La colección más completa de manga futanari y hentai traducido al español para Latino América.
+        </p>
       </div>
 
       {/* Filtros centrados */}
@@ -131,7 +170,6 @@ export default async function CatalogPage({
           </div>
         </div>
 
-        {/* Separador */}
         <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.05)' }} />
 
         {/* Estado */}
