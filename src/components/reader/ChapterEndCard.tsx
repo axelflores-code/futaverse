@@ -1,11 +1,12 @@
 'use client'
 
-import Link from 'next/link'
+// src/components/reader/ChapterEndCard.tsx
+
+import Link                    from 'next/link'
 import { useState, useEffect } from 'react'
-import { useReaderStore } from '@/stores/readerStore'
-import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
-import { ChapterComments } from './ChapterComments'
+import { useReaderStore }      from '@/stores/readerStore'
+import { createClient }        from '@/lib/supabase/client'
+import { cn }                  from '@/lib/utils'
 
 interface ChapterNav { id: string; number: number; mangaId: string }
 
@@ -17,15 +18,20 @@ interface ChapterEndCardProps {
   nextChapter:   ChapterNav | null
 }
 
-type ChapterReaction = '😍' | '😐' | '😭' | '🔥' | '😤'
+type ChapterReaction = '😍' | '😐' | '😢' | '🔥' | '🤮'
 
 const REACTIONS: { emoji: ChapterReaction; label: string }[] = [
-  { emoji: '😍', label: 'Me encantó'   },
-  { emoji: '😐', label: 'No me gusto'     },
-  { emoji: '😭', label: 'Me entristece'      },
-  { emoji: '🔥', label: 'Riko'     },
-  { emoji: '😤', label: 'Me enoja'   },
+  { emoji: '😍', label: 'Me encantó'  },
+  { emoji: '😐', label: 'Normal'      },
+  { emoji: '😢', label: 'Me entristeció' },
+  { emoji: '🔥', label: 'Genial'      },
+  { emoji: '🤮', label: 'No me gustó' },
 ]
+
+// Clave localStorage para reacciones anónimas
+function getLocalKey(chapterId: string) {
+  return `fv_reaction_${chapterId}`
+}
 
 export function ChapterEndCard({
   chapterNumber,
@@ -34,12 +40,11 @@ export function ChapterEndCard({
   prevChapter,
   nextChapter,
 }: ChapterEndCardProps) {
-  const { settings }                        = useReaderStore()
-  const [userReaction, setUserReaction]     = useState<ChapterReaction | null>(null)
-  const [counts, setCounts]                 = useState<Record<string, number>>({})
-  const [isAuth, setIsAuth]                 = useState(false)
-  const [loading, setLoading]               = useState(false)
-  const [saved, setSaved]                   = useState(false)
+  const { settings }                    = useReaderStore()
+  const [userReaction, setUserReaction] = useState<ChapterReaction | null>(null)
+  const [counts,       setCounts]       = useState<Record<string, number>>({})
+  const [loading,      setLoading]      = useState(false)
+  const [saved,        setSaved]        = useState(false)
 
   const isDark = settings.theme === 'dark'
 
@@ -47,10 +52,7 @@ export function ChapterEndCard({
     const supabase = createClient()
 
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) setIsAuth(true)
-
-      // Cargar conteos de reacciones del capítulo
+      // Cargar conteos
       const { data: allReactions } = await supabase
         .from('chapter_reactions')
         .select('type')
@@ -64,9 +66,17 @@ export function ChapterEndCard({
         setCounts(newCounts)
       }
 
+      // Ver si ya reaccionó (primero localStorage para anónimos)
+      const localReaction = localStorage.getItem(getLocalKey(chapterId))
+      if (localReaction) {
+        setUserReaction(localReaction as ChapterReaction)
+        return
+      }
+
+      // Si tiene sesión, ver en DB
+      const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Ver reacción del usuario
       const { data: myReaction } = await supabase
         .from('chapter_reactions')
         .select('type')
@@ -87,98 +97,123 @@ export function ChapterEndCard({
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) {
-      window.location.href = '/login'
-      return
-    }
-
     if (userReaction === emoji) {
-      await supabase
-        .from('chapter_reactions')
-        .delete()
-        .eq('chapter_id', chapterId)
-        .eq('user_id', user.id)
+      // Quitar reacción
       setCounts(prev => ({ ...prev, [emoji]: Math.max(0, (prev[emoji] ?? 1) - 1) }))
       setUserReaction(null)
+      localStorage.removeItem(getLocalKey(chapterId))
+
+      if (user) {
+        await supabase
+          .from('chapter_reactions')
+          .delete()
+          .eq('chapter_id', chapterId)
+          .eq('user_id', user.id)
+      }
     } else {
+      // Quitar reacción anterior del contador
       if (userReaction) {
         setCounts(prev => ({ ...prev, [userReaction]: Math.max(0, (prev[userReaction] ?? 1) - 1) }))
       }
-      await supabase
-        .from('chapter_reactions')
-        .upsert({
-          user_id:    user.id,
-          chapter_id: chapterId,
-          type:       emoji,
-        }, { onConflict: 'user_id,chapter_id' })
+
+      // Agregar nueva
       setCounts(prev => ({ ...prev, [emoji]: (prev[emoji] ?? 0) + 1 }))
       setUserReaction(emoji)
+      localStorage.setItem(getLocalKey(chapterId), emoji)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
+
+      if (user) {
+        // Usuario con cuenta: guardar en DB
+        await supabase
+          .from('chapter_reactions')
+          .upsert({
+            user_id:    user.id,
+            chapter_id: chapterId,
+            type:       emoji,
+          }, { onConflict: 'user_id,chapter_id' })
+      }
+      // Usuario anónimo: solo se guarda en localStorage (ya hecho arriba)
     }
 
     setLoading(false)
   }
 
   const cardStyle = isDark
-    ? 'border-[#1e1e1e] bg-[#0f0f0f] text-zinc-400'
-    : 'border-zinc-200 bg-white text-zinc-500'
+    ? { borderColor: '#1e1e1e', background: '#0f0f0f', color: 'rgba(160,152,144,1)' }
+    : { borderColor: '#e5e5e5', background: '#fff',    color: 'rgba(96,88,80,1)' }
 
   return (
-    <div className={cn('w-full border-t flex flex-col items-center gap-5 py-12 px-6 text-center', cardStyle)}>
+    <div
+      style={{ width: '100%', borderTop: `1px solid ${cardStyle.borderColor}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', padding: '40px 24px', textAlign: 'center', background: cardStyle.background }}
+    >
       <div>
-        <p className="text-sm font-semibold mb-1" style={{ color: isDark ? '#e0e0e0' : '#1a1a1a' }}>
+        <p style={{ fontSize: '15px', fontWeight: 600, color: isDark ? '#e0e0e0' : '#1a1a1a', marginBottom: '4px' }}>
           Fin del capítulo {chapterNumber}
         </p>
-        <p className="text-xs">¿Qué te pareció este capítulo?</p>
+        <p style={{ fontSize: '13px', color: cardStyle.color }}>
+          ¿Qué te pareció este capítulo?
+        </p>
       </div>
 
-      {/* Reacciones */}
-      <div className="flex gap-2 flex-wrap justify-center">
+      {/* Reacciones — disponibles para todos */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
         {REACTIONS.map(({ emoji, label }) => (
           <button
             key={emoji}
             onClick={() => handleReaction(emoji)}
             disabled={loading}
             title={label}
-            className={cn(
-              'flex flex-col items-center gap-1 px-3 py-2 rounded-xl border transition-all duration-150',
-              userReaction === emoji
-                ? 'border-red-500/50 bg-red-500/10 scale-110'
-                : isDark
-                ? 'border-[#222] hover:border-[#333] hover:bg-[#161616]'
-                : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50'
-            )}
+            style={{
+              display:       'flex',
+              flexDirection: 'column',
+              alignItems:    'center',
+              gap:           '4px',
+              padding:       '10px 14px',
+              borderRadius:  '12px',
+              border:        userReaction === emoji
+                ? '1px solid #C4956A'
+                : `1px solid ${isDark ? '#222' : '#e5e5e5'}`,
+              background:    userReaction === emoji
+                ? 'rgba(196,149,106,0.12)'
+                : isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+              cursor:        loading ? 'wait' : 'pointer',
+              transition:    'all .15s',
+              transform:     userReaction === emoji ? 'scale(1.10)' : 'scale(1)',
+            }}
           >
-            <span className="text-xl">{emoji}</span>
+            <span style={{ fontSize: '24px', lineHeight: 1 }}>{emoji}</span>
             {counts[emoji] > 0 && (
-              <span className="text-[10px] text-zinc-500">{counts[emoji]}</span>
+              <span style={{ fontSize: '11px', color: userReaction === emoji ? '#C4956A' : cardStyle.color, fontWeight: 600 }}>
+                {counts[emoji]}
+              </span>
             )}
           </button>
         ))}
       </div>
 
       {saved && (
-        <p className="text-xs text-emerald-400 animate-pulse">¡Reacción guardada!</p>
+        <p style={{ fontSize: '12px', color: '#1D9E75' }}>✓ ¡Reacción guardada!</p>
       )}
 
-      {!isAuth && (
-        <p className="text-xs text-zinc-600">
-          <a href="/login" className="text-red-400 hover:text-red-300">Inicia sesión</a> para guardar tu reacción
-        </p>
-      )}
-
-      {/* Navegación */}
-      <div className="flex gap-3 flex-wrap justify-center">
+      {/* Navegación entre capítulos */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
         {prevChapter && (
           <Link
             href={`/read/${mangaSlug}/${prevChapter.number}`}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-2 rounded-lg border text-sm font-medium transition-all',
-              isDark
-                ? 'border-[#222] text-zinc-500 hover:border-[#333] hover:text-zinc-300 hover:bg-[#161616]'
-                : 'border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-700'
-            )}
+            style={{
+              display:        'inline-flex',
+              alignItems:     'center',
+              gap:            '6px',
+              padding:        '9px 18px',
+              borderRadius:   '10px',
+              fontSize:       '13px',
+              fontWeight:     500,
+              textDecoration: 'none',
+              border:         `1px solid ${isDark ? '#222' : '#e5e5e5'}`,
+              color:          cardStyle.color,
+              background:     isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+            }}
           >
             ← Cap. {prevChapter.number}
           </Link>
@@ -186,18 +221,23 @@ export function ChapterEndCard({
         {nextChapter && (
           <Link
             href={`/read/${mangaSlug}/${nextChapter.number}`}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-400 text-white text-sm font-semibold transition-colors"
+            style={{
+              display:        'inline-flex',
+              alignItems:     'center',
+              gap:            '6px',
+              padding:        '9px 18px',
+              borderRadius:   '10px',
+              fontSize:       '13px',
+              fontWeight:     600,
+              textDecoration: 'none',
+              background:     '#C4956A',
+              color:          '#0c0c12',
+            }}
           >
             Cap. {nextChapter.number} →
           </Link>
         )}
       </div>
-
-      {/* Comentarios */}
-<ChapterComments
-  chapterId={chapterId}
-  mangaId={mangaSlug}
-/>
     </div>
   )
 }

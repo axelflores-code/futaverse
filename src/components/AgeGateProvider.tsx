@@ -13,7 +13,14 @@ export function AgeGateProvider({ children }: { children: React.ReactNode }) {
     setChecking(false)
   }, [])
 
-  if (checking) return null
+  if (checking) return (
+    <div style={{ 
+      position: 'fixed', 
+      inset: 0, 
+      background: '#0b0c10',
+      zIndex: 9999 
+    }} />
+  )
 
   if (!verified) {
     return <AgeGate onConfirm={() => setVerified(true)} />
