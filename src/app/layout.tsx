@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     url: 'https://mangafuta.com',
     siteName: 'MangaFuta',
     title: 'MangaFuta — Manga Futanari en Español',
-    description: 'La mejor colección de manga futanari traducido al español para Latino América.',
+    description: 'La mejor colección de manga futanari traducido al español para todo habla ispana.',
     images: [
       {
         url: '/og-image.jpg',
