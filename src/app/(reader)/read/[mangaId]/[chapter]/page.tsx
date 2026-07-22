@@ -45,7 +45,7 @@ export default async function ReaderPage({ params }: PageProps) {
       <Script
   id="popads"
   src="/popads.js"
-  strategy="afterInteractive"
+  strategy="lazyOnload"
 />
 
       <MangaReader
