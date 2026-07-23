@@ -1,6 +1,5 @@
 // src/app/manga/page.tsx
 
-import type { Metadata }   from 'next'
 import { createClient }    from '@/lib/supabase/server'
 import { getAllCategories } from '@/lib/queries/categories'
 import { getAllTags }       from '@/lib/queries/tag'
@@ -12,44 +11,6 @@ import type { Manga }      from '@/types/manga'
 export const revalidate = 900
 
 const PAGE_SIZE = 24
-
-type Period = 'today' | 'week' | 'month' | 'all'
-type Status = 'ongoing' | 'completed' | 'hiatus' | ''
-
-export const metadata: Metadata = {
-  title: 'Catálogo de Manga Futanari en Español — MangaFuta',
-  description: 'Explora cientos de títulos de manga futanari, futa y hentai traducidos al español. Filtra por popularidad, estado y géneros. Actualizado diariamente.',
-  keywords: [
-    'catálogo manga futanari español',
-    'manga futa completo',
-    'lista manga hentai español',
-    'manga futanari online gratis',
-    'todos los manga futa español',
-    'manga dickgirl latino',
-    'manga adulto español completo',
-  ],
-  alternates: {
-    canonical: 'https://mangafuta.com/manga',
-  },
-  openGraph: {
-    title: 'Catálogo de Manga Futanari en Español — MangaFuta',
-    description: 'Explora cientos de títulos de manga futanari traducidos al español. Actualizado diariamente.',
-    url: 'https://mangafuta.com/manga',
-    siteName: 'MangaFuta',
-    locale: 'es_LA',
-    type: 'website',
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-    },
-  },
-}
 
 function mapManga(m: Record<string, unknown>): Manga {
   return {
@@ -72,12 +33,8 @@ function mapManga(m: Record<string, unknown>): Manga {
   }
 }
 
-const PERIOD_OPTIONS: { value: Period; label: string }[] = [
-  { value: 'today', label: 'Hoy'           },
-  { value: 'week',  label: 'Esta semana'   },
-  { value: 'month', label: 'Este mes'      },
-  { value: 'all',   label: 'Todo el tiempo'},
-]
+type Status = 'ongoing' | 'completed' | 'hiatus' | ''
+type Sort   = 'recent' | 'oldest' | 'popular' | 'score'
 
 const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: '',          label: 'Todos'    },
@@ -86,82 +43,89 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: 'hiatus',    label: 'Pausado'  },
 ]
 
+const SORT_OPTIONS: { value: Sort; label: string }[] = [
+  { value: 'recent',  label: 'Recientes'    },
+  { value: 'oldest',  label: 'Más antiguos' },
+  { value: 'popular', label: 'Populares'    },
+  { value: 'score',   label: 'Mejor score'  },
+]
+
 export default async function CatalogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string; period?: string; sortBy?: string }>
+  searchParams: Promise<{ page?: string; status?: string; sort?: string }>
 }) {
-  const { page: pageParam, status = '', period = 'all', sortBy = 'updatedAt' } = await searchParams
+  const { page: pageParam, status = '', sort = 'recent' } = await searchParams
   const currentPage = Math.max(1, Number(pageParam ?? 1))
   const from        = (currentPage - 1) * PAGE_SIZE
   const to          = from + PAGE_SIZE - 1
   const supabase    = await createClient()
 
-  let mangas: Manga[] = []
-  let total           = 0
+  const orderCol = sort === 'popular' ? 'views'
+    : sort === 'score'  ? 'score'
+    : sort === 'oldest' ? 'created_at'
+    : 'updated_at'
 
-  if (period !== 'all') {
-    const { data: popularIds } = await supabase.rpc('get_popular_mangas', { period, lim: 200 })
-    if (popularIds && popularIds.length > 0) {
-      const ids = popularIds.map((r: { manga_id: string }) => r.manga_id)
-      let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).in('id', ids).neq('status', 'draft')
-      if (status) query = query.eq('status', status)
-      const { data, count } = await query.range(from, to)
-      total  = count ?? 0
-      const sorted = (data ?? []).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
-      mangas = sorted.map(mapManga)
-    }
-  } else {
-    const sortColumn = sortBy === 'score' ? 'score' : sortBy === 'views' ? 'views' : sortBy === 'createdAt' ? 'created_at' : 'updated_at'
-    let query = supabase.from('mangas').select('*, manga_genres(genres(id,name,slug))', { count: 'exact' }).neq('status', 'draft').order(sortColumn, { ascending: false }).range(from, to)
-    if (status) query = query.eq('status', status)
-    const { data, count } = await query
-    total  = count ?? 0
-    mangas = (data ?? []).map(mapManga)
-  }
+  const ascending = sort === 'oldest'
 
+  let query = supabase
+    .from('mangas')
+    .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
+    .order(orderCol, { ascending })
+    .range(from, to)
+
+  if (status) query = query.eq('status', status)
+
+  const [{ data: mangasRaw, count }, categories, tags] = await Promise.all([
+    query,
+    getAllCategories(),
+    getAllTags(),
+  ])
+
+  const mangas     = (mangasRaw ?? []).map(mapManga)
+  const total      = count ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
-  const [categories, tags] = await Promise.all([getAllCategories(), getAllTags()])
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 16px' }}>
 
       {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
+      <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-          Catálogo de Manga Futanari en Español
+          Catálogo
           <span style={{ fontSize: '14px', fontWeight: 400, color: 'rgba(160,152,144,0.5)' }}>
-            ({total} títulos)
+            ({total.toLocaleString()} títulos)
           </span>
         </h1>
-        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.4)', marginTop: '6px' }}>
-          La colección más completa de manga futanari y hentai traducido al español para Latino América.
-        </p>
       </div>
 
-      {/* Filtros centrados */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginBottom: '32px', padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.05)' }}>
+      {/* Panel de filtros */}
+      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '14px', padding: '16px 20px', marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-        {/* Popular por período */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
-          <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(96,88,80,1)' }}>
-            Popular
-          </p>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {PERIOD_OPTIONS.map(opt => (
+        {/* Ordenar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', minWidth: '60px' }}>
+            Ordenar
+          </span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {SORT_OPTIONS.map(opt => (
               <Link
                 key={opt.value}
-                href={`/manga?period=${opt.value}&status=${status}`}
+                href={`/manga?sort=${opt.value}&status=${status}`}
                 style={{
-                  padding:      '7px 18px',
-                  borderRadius: '20px',
-                  fontSize:     '13px',
-                  fontWeight:   period === opt.value ? 600 : 400,
+                  padding:        '6px 14px',
+                  borderRadius:   '20px',
+                  fontSize:       '13px',
+                  fontWeight:     sort === opt.value ? 600 : 400,
                   textDecoration: 'none',
-                  transition:   'all .15s',
-                  background:   period === opt.value ? '#3D5A9E' : 'rgba(255,255,255,0.04)',
-                  border:       `1px solid ${period === opt.value ? '#3D5A9E' : 'rgba(255,255,255,0.08)'}`,
-                  color:        period === opt.value ? '#fff' : 'rgba(175,167,158,1)',
+                  transition:     'all .15s',
+                  background:     sort === opt.value
+                    ? opt.value === 'popular' ? '#3D5A9E' : '#C4956A'
+                    : 'rgba(255,255,255,0.04)',
+                  border:         `1px solid ${sort === opt.value
+                    ? opt.value === 'popular' ? '#3D5A9E' : '#C4956A'
+                    : 'rgba(255,255,255,0.07)'}`,
+                  color:          sort === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
                 }}
               >
                 {opt.label}
@@ -170,28 +134,29 @@ export default async function CatalogPage({
           </div>
         </div>
 
-        <div style={{ width: '100%', height: '1px', background: 'rgba(255,255,255,0.05)' }} />
+        {/* Separador */}
+        <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)' }} />
 
         {/* Estado */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', width: '100%' }}>
-          <p style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', color: 'rgba(96,88,80,1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', minWidth: '60px' }}>
             Estado
-          </p>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          </span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {STATUS_OPTIONS.map(opt => (
               <Link
                 key={opt.value}
-                href={`/manga?status=${opt.value}&period=${period}`}
+                href={`/manga?status=${opt.value}&sort=${sort}`}
                 style={{
-                  padding:      '7px 18px',
-                  borderRadius: '20px',
-                  fontSize:     '13px',
-                  fontWeight:   status === opt.value ? 600 : 400,
+                  padding:        '6px 14px',
+                  borderRadius:   '20px',
+                  fontSize:       '13px',
+                  fontWeight:     status === opt.value ? 600 : 400,
                   textDecoration: 'none',
-                  transition:   'all .15s',
-                  background:   status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.04)',
-                  border:       `1px solid ${status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.08)'}`,
-                  color:        status === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
+                  transition:     'all .15s',
+                  background:     status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.04)',
+                  border:         `1px solid ${status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.07)'}`,
+                  color:          status === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
                 }}
               >
                 {opt.label}
@@ -215,7 +180,7 @@ export default async function CatalogPage({
             currentPage={currentPage}
             totalPages={totalPages}
             basePath="/manga"
-            searchParams={{ status, period, sortBy }}
+            searchParams={{ status, sort }}
           />
         </div>
       )}

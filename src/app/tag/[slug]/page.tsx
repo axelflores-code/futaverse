@@ -1,6 +1,5 @@
 // src/app/tag/[slug]/page.tsx
 
-import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { notFound }     from 'next/navigation'
 import { MangaCard }    from '@/components/manga/MangaCard'
@@ -9,8 +8,8 @@ import Link             from 'next/link'
 import type { Manga }   from '@/types/manga'
 
 interface PageProps {
-  params:      Promise<{ slug: string }>
-  searchParams: Promise<{ page?: string }>
+  params:       Promise<{ slug: string }>
+  searchParams: Promise<{ page?: string; sort?: string }>
 }
 
 const PAGE_SIZE = 24
@@ -30,72 +29,16 @@ const NS_LABELS: Record<string, string> = {
   content_warning: 'Advertencia de contenido',
 }
 
-// ── SEO Metadata ─────────────────────────────────────────────────
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { slug } = await params
-  const supabase = await createClient()
-
-  const { data: tag } = await supabase
-    .from('tags')
-    .select('name, slug, namespace')
-    .eq('slug', slug)
-    .single()
-
-  if (!tag) return { title: 'Tag no encontrado' }
-
-  const { count } = await supabase
-    .from('manga_tags')
-    .select('*', { count: 'exact', head: true })
-    .eq('tag_id', (await supabase.from('tags').select('id').eq('slug', slug).single()).data?.id)
-
-  const total = count ?? 0
-  const tagName = tag.name
-  const title = `Manga ${tagName} en Español — MangaFuta`
-  const description = `Lee los mejores manga ${tagName} traducidos al español. ${total} títulos de ${tagName} disponibles gratis en MangaFuta. La mejor colección de manga ${tagName} para Latino América.`
-
-  return {
-    title,
-    description,
-    robots: {
-      index: true,
-      follow: true,
-      googleBot: {
-        index: true,
-        follow: true,
-        'max-image-preview': 'large',
-        'max-snippet': -1,
-      },
-    },
-    alternates: {
-      canonical: `https://mangafuta.com/tag/${slug}`,
-    },
-    openGraph: {
-      title,
-      description,
-      type: 'website',
-      url: `https://mangafuta.com/tag/${slug}`,
-      siteName: 'MangaFuta',
-      locale: 'es_LA',
-    },
-    twitter: {
-      card: 'summary',
-      title,
-      description,
-    },
-    keywords: [
-      `manga ${tagName} español`,
-      `${tagName} manga latino`,
-      `${tagName} hentai español`,
-      `leer manga ${tagName}`,
-      `manga ${tagName} gratis`,
-      `${tagName} en español`,
-    ],
-  }
-}
+const SORT_OPTIONS = [
+  { value: 'recent',   label: 'Recientes'   },
+  { value: 'oldest',   label: 'Más antiguos' },
+  { value: 'popular',  label: 'Populares'    },
+  { value: 'score',    label: 'Mejor score'  },
+]
 
 export default async function TagPage({ params, searchParams }: PageProps) {
   const { slug }  = await params
-  const { page: pageParam } = await searchParams
+  const { page: pageParam, sort = 'recent' } = await searchParams
   const currentPage = Math.max(1, Number(pageParam ?? 1))
   const from = (currentPage - 1) * PAGE_SIZE
   const to   = from + PAGE_SIZE - 1
@@ -110,26 +53,37 @@ export default async function TagPage({ params, searchParams }: PageProps) {
 
   if (!tag) notFound()
 
-  // Contar total
-  const { count } = await supabase
-    .from('manga_tags')
-    .select('*', { count: 'exact', head: true })
-    .eq('tag_id', tag.id)
+  // Ordenar según sort
+  const orderCol = sort === 'popular' ? 'views'
+    : sort === 'score'   ? 'score'
+    : sort === 'oldest'  ? 'created_at'
+    : 'updated_at'
 
-  // Obtener mangas paginados
-  const { data: mangaTags } = await supabase
+  const ascending = sort === 'oldest'
+
+  // Obtener IDs de mangas con este tag ordenados
+  const { data: mangaTagIds, count } = await supabase
     .from('manga_tags')
-    .select('mangas(*, manga_genres(genres(id, name, slug)))')
+    .select('manga_id', { count: 'exact' })
     .eq('tag_id', tag.id)
-    .range(from, to)
 
   const total      = count ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const mangas: Manga[] = ((mangaTags ?? []) as unknown as Array<{ mangas: MangaRow }>)
-    .map(mt => mt.mangas)
-    .filter(Boolean)
-    .map((m: MangaRow) => ({
+  // Obtener mangas ordenados
+  const ids = (mangaTagIds ?? []).map(mt => mt.manga_id)
+
+  let mangas: Manga[] = []
+
+  if (ids.length > 0) {
+    const { data: mangasRaw } = await supabase
+      .from('mangas')
+      .select('*, manga_genres(genres(id, name, slug))')
+      .in('id', ids)
+      .order(orderCol, { ascending })
+      .range(from, to)
+
+    mangas = (mangasRaw ?? []).map((m: MangaRow) => ({
       id:                m.id,
       slug:              m.slug,
       title:             m.title,
@@ -146,6 +100,7 @@ export default async function TagPage({ params, searchParams }: PageProps) {
       createdAt:         m.created_at,
       updatedAt:         m.updated_at,
     }))
+  }
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 16px' }}>
@@ -162,22 +117,46 @@ export default async function TagPage({ params, searchParams }: PageProps) {
       </Link>
 
       {/* Header */}
-      <div style={{ marginBottom: '28px' }}>
+      <div style={{ marginBottom: '24px' }}>
         <p style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', color: '#3D5A9E', marginBottom: '6px' }}>
           {NS_LABELS[tag.namespace] ?? tag.namespace}
         </p>
         <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#f0ece8', marginBottom: '6px' }}>
           {tag.name}
         </h1>
-        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.6)' }}>
-          {total} manga{total !== 1 ? 's' : ''} con este tag
+        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.5)' }}>
+          {total.toLocaleString()} manga{total !== 1 ? 's' : ''}
         </p>
+      </div>
 
-        {/* Descripción SEO visible — ayuda a Google a entender la página */}
-        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.4)', marginTop: '8px', maxWidth: '600px' }}>
-          Explora nuestra colección de manga <strong style={{ color: 'rgba(160,152,144,0.6)' }}>{tag.name}</strong> traducido al español. 
-          Acceso gratuito a los mejores títulos para el público latino.
-        </p>
+      {/* Filtros de orden */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '24px', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', marginRight: '4px' }}>
+          Ordenar:
+        </span>
+        {SORT_OPTIONS.map(opt => (
+          <Link
+            key={opt.value}
+            href={`/tag/${slug}?sort=${opt.value}`}
+            style={{
+              padding:        '6px 14px',
+              borderRadius:   '20px',
+              fontSize:       '13px',
+              fontWeight:     sort === opt.value ? 600 : 400,
+              textDecoration: 'none',
+              transition:     'all .15s',
+              background:     sort === opt.value
+                ? opt.value === 'popular' ? '#3D5A9E' : '#C4956A'
+                : 'rgba(255,255,255,0.04)',
+              border:         `1px solid ${sort === opt.value
+                ? opt.value === 'popular' ? '#3D5A9E' : '#C4956A'
+                : 'rgba(255,255,255,0.08)'}`,
+              color:          sort === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
+            }}
+          >
+            {opt.label}
+          </Link>
+        ))}
       </div>
 
       {/* Grid */}
@@ -199,7 +178,7 @@ export default async function TagPage({ params, searchParams }: PageProps) {
                 currentPage={currentPage}
                 totalPages={totalPages}
                 basePath={`/tag/${slug}`}
-                searchParams={{}}
+                searchParams={{ sort }}
               />
             </div>
           )}
