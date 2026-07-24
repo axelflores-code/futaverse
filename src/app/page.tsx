@@ -103,7 +103,7 @@ export default async function HomePage() {
       .select('*, manga_genres(genres(id,name,slug))')
       .neq('status', 'draft')
       .order('updated_at', { ascending: false })
-      .limit(14),
+      .limit(28),
     supabase
       .from('tags')
       .select('id, name, slug, namespace, usage_count')
@@ -116,22 +116,39 @@ export default async function HomePage() {
   const popularMangas = (popularRaw ?? []).map(mapManga)
   const latestMangas  = (latestRaw  ?? []).map(mapManga)
 
-  const tagSections = await Promise.all(
-    (topTags ?? []).slice(0, 3).map(async (tag) => {
-      const { data: mangaTags } = await supabase
-        .from('manga_tags')
-        .select('mangas(*, manga_genres(genres(id,name,slug)))')
-        .eq('tag_id', tag.id)
-        .limit(6)
+  // Tags específicos para secciones destacadas
+const FEATURED_TAG_SLUGS = [
+  'dickgirl-on-female',
+  'sole-dickgirl', 
+  'dickgirl-on-male',
+]
 
-      const mangas = (mangaTags ?? [])
-        .map((mt: Record<string, unknown>) => mt.mangas as Record<string, unknown>)
-        .filter(Boolean)
-        .map(mapManga)
+const { data: featuredTagsRaw } = await supabase
+  .from('tags')
+  .select('id, name, slug, namespace, usage_count')
+  .in('slug', FEATURED_TAG_SLUGS)
 
-      return { tag, mangas }
-    })
-  )
+// Ordenar según el array definido
+const featuredTags = FEATURED_TAG_SLUGS
+  .map(slug => (featuredTagsRaw ?? []).find(t => t.slug === slug))
+  .filter(Boolean)
+
+const tagSections = await Promise.all(
+  featuredTags.map(async (tag) => {
+    const { data: mangaTags } = await supabase
+      .from('manga_tags')
+      .select('mangas(*, manga_genres(genres(id,name,slug)))')
+      .eq('tag_id', tag!.id)
+      .limit(7)
+
+    const mangas = (mangaTags ?? [])
+      .map((mt: Record<string, unknown>) => mt.mangas as Record<string, unknown>)
+      .filter(Boolean)
+      .map(mapManga)
+
+    return { tag: tag!, mangas }
+  })
+)
 
   return (
     <div>
