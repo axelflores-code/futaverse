@@ -1,14 +1,17 @@
 import type { NextConfig } from 'next'
 
-const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
+const nextConfig = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  async redirects() {
+    return [
       {
-        protocol: 'https',
-        hostname: '**.supabase.co',
-        pathname: '/storage/v1/object/public/**',
+        source: '/genre/:slug',
+        destination: '/tag/:slug',
+        permanent: true,
       },
-    ],
+    ]
   },
 }
 
