@@ -296,3 +296,4 @@ export default async function MangaDetailPage({ params }: PageProps) {
     </>
   )
 }
+
