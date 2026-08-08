@@ -8,9 +8,12 @@ import { Pagination }      from '@/components/ui/Pagination'
 import Link                from 'next/link'
 import type { Manga }      from '@/types/manga'
 
-export const revalidate = 900
+export const revalidate = 900 // 15 min
 
 const PAGE_SIZE = 24
+
+type Period = 'today' | 'week' | 'month' | 'all'
+type Status = 'ongoing' | 'completed' | 'hiatus' | ''
 
 function mapManga(m: Record<string, unknown>): Manga {
   return {
@@ -33,8 +36,12 @@ function mapManga(m: Record<string, unknown>): Manga {
   }
 }
 
-type Status = 'ongoing' | 'completed' | 'hiatus' | ''
-type Sort   = 'recent' | 'oldest' | 'popular' | 'score'
+const PERIOD_LABELS: Record<Period, string> = {
+  today: 'Hoy',
+  week:  'Esta semana',
+  month: 'Este mes',
+  all:   'Todo el tiempo',
+}
 
 const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: '',          label: 'Todos'    },
@@ -43,144 +50,165 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: 'hiatus',    label: 'Pausado'  },
 ]
 
-const SORT_OPTIONS: { value: Sort; label: string }[] = [
-  { value: 'recent',  label: 'Recientes'    },
-  { value: 'oldest',  label: 'Más antiguos' },
-  { value: 'popular', label: 'Populares'    },
-  { value: 'score',   label: 'Mejor score'  },
-]
-
 export default async function CatalogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string; sort?: string }>
+  searchParams: Promise<{
+    page?:   string
+    status?: string
+    period?: string
+    sortBy?: string
+  }>
 }) {
-  const { page: pageParam, status = '', sort = 'recent' } = await searchParams
+  const {
+    page:   pageParam,
+    status  = '',
+    period  = 'all',
+    sortBy  = 'updatedAt',
+  } = await searchParams
+
   const currentPage = Math.max(1, Number(pageParam ?? 1))
   const from        = (currentPage - 1) * PAGE_SIZE
   const to          = from + PAGE_SIZE - 1
   const supabase    = await createClient()
 
-  const orderCol = sort === 'popular' ? 'views'
-    : sort === 'score'  ? 'score'
-    : sort === 'oldest' ? 'created_at'
-    : 'updated_at'
+  let mangas: Manga[] = []
+  let total           = 0
 
-  const ascending = sort === 'oldest'
+  if (period !== 'all' || sortBy === 'popular') {
+    // Usar la función RPC para popularidad por período
+    const { data: popularIds } = await supabase.rpc('get_popular_mangas', {
+      period: period === 'all' ? 'all' : period,
+      lim:    200,
+    })
 
-  let query = supabase
-    .from('mangas')
-    .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
-    .order(orderCol, { ascending })
-    .range(from, to)
+    if (popularIds && popularIds.length > 0) {
+      const ids = popularIds.map((r: { manga_id: string }) => r.manga_id)
 
-  if (status) query = query.eq('status', status)
+      let query = supabase
+        .from('mangas')
+        .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
+        .in('id', ids)
 
-  const [{ data: mangasRaw, count }, categories, tags] = await Promise.all([
-    query,
-    getAllCategories(),
-    getAllTags(),
-  ])
+      if (status) query = query.eq('status', status)
 
-  const mangas     = (mangasRaw ?? []).map(mapManga)
-  const total      = count ?? 0
+      const { data, count } = await query.range(from, to)
+      total  = count ?? 0
+
+      // Ordenar por popularidad según el resultado del RPC
+      const sorted = (data ?? []).sort((a, b) => {
+        const aIdx = ids.indexOf(a.id)
+        const bIdx = ids.indexOf(b.id)
+        return aIdx - bIdx
+      })
+
+      mangas = sorted.map(mapManga)
+    }
+  } else {
+    // Orden normal
+    const sortColumn = sortBy === 'score'
+      ? 'score'
+      : sortBy === 'views'
+      ? 'views'
+      : sortBy === 'createdAt'
+      ? 'created_at'
+      : 'updated_at'
+
+    let query = supabase
+      .from('mangas')
+      .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
+      .order(sortColumn, { ascending: false })
+      .range(from, to)
+
+    if (status) query = query.eq('status', status)
+
+    const { data, count } = await query
+    total  = count ?? 0
+    mangas = (data ?? []).map(mapManga)
+  }
+
   const totalPages = Math.ceil(total / PAGE_SIZE)
+  const [categories, tags] = await Promise.all([getAllCategories(), getAllTags()])
 
   return (
-    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 16px' }}>
+    <div className="max-w-7xl mx-auto px-4 py-8">
 
       {/* Header */}
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+        <h1 className="text-2xl font-bold" style={{ color: '#f0ece8' }}>
           Catálogo
-          <span style={{ fontSize: '14px', fontWeight: 400, color: 'rgba(160,152,144,0.5)' }}>
-            ({total.toLocaleString()} títulos)
+          <span className="text-sm font-normal ml-2"
+            style={{ color: 'rgba(160,152,144,0.6)' }}
+          >
+            ({total} títulos)
           </span>
         </h1>
       </div>
 
-      {/* Panel de filtros */}
-      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '14px', padding: '16px 20px', marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-        {/* Ordenar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', minWidth: '60px' }}>
-            Ordenar
-          </span>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {SORT_OPTIONS.map(opt => (
-              <Link
-                key={opt.value}
-                href={`/manga?sort=${opt.value}&status=${status}`}
-                style={{
-                  padding:        '6px 14px',
-                  borderRadius:   '20px',
-                  fontSize:       '13px',
-                  fontWeight:     sort === opt.value ? 600 : 400,
-                  textDecoration: 'none',
-                  transition:     'all .15s',
-                  background:     sort === opt.value
-                    ? opt.value === 'popular' ? '#3D5A9E' : '#C4956A'
-                    : 'rgba(255,255,255,0.04)',
-                  border:         `1px solid ${sort === opt.value
-                    ? opt.value === 'popular' ? '#3D5A9E' : '#C4956A'
-                    : 'rgba(255,255,255,0.07)'}`,
-                  color:          sort === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
-                }}
-              >
-                {opt.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Separador */}
-        <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)' }} />
-
-        {/* Estado */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'rgba(96,88,80,1)', minWidth: '60px' }}>
-            Estado
-          </span>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {STATUS_OPTIONS.map(opt => (
-              <Link
-                key={opt.value}
-                href={`/manga?status=${opt.value}&sort=${sort}`}
-                style={{
-                  padding:        '6px 14px',
-                  borderRadius:   '20px',
-                  fontSize:       '13px',
-                  fontWeight:     status === opt.value ? 600 : 400,
-                  textDecoration: 'none',
-                  transition:     'all .15s',
-                  background:     status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.04)',
-                  border:         `1px solid ${status === opt.value ? '#C4956A' : 'rgba(255,255,255,0.07)'}`,
-                  color:          status === opt.value ? '#0c0c12' : 'rgba(175,167,158,1)',
-                }}
-              >
-                {opt.label}
-              </Link>
-            ))}
-          </div>
+      {/* Filtro de popularidad por período */}
+      <div className="mb-4">
+        <p className="text-xs font-semibold uppercase tracking-wider mb-2"
+          style={{ color: 'rgba(96,88,80,1)' }}
+        >
+          Popular:
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([p, label]) => (
+            <Link
+              key={p}
+              href={`/manga?period=${p}&status=${status}&sortBy=${sortBy}`}
+              className="px-4 py-1.5 rounded-full text-sm font-medium transition-all"
+              style={period === p ? {
+                background:  'rgba(196,149,106,0.15)',
+                border:      '1px solid #C4956A',
+                color:       '#C4956A',
+              } : {
+                background:  'rgba(255,255,255,0.04)',
+                border:      '1px solid rgba(255,255,255,0.08)',
+                color:       'rgba(160,152,144,0.8)',
+              }}
+            >
+              {label}
+            </Link>
+          ))}
         </div>
       </div>
 
-      {/* Grid */}
+      {/* Filtro de estado */}
+      <div className="flex gap-2 flex-wrap mb-6">
+        {STATUS_OPTIONS.map(opt => (
+          <Link
+            key={opt.value}
+            href={`/manga?status=${opt.value}&period=${period}&sortBy=${sortBy}`}
+            className="px-4 py-1.5 rounded-full text-sm font-medium transition-all"
+            style={status === opt.value ? {
+              background:  'rgba(196,149,106,0.15)',
+              border:      '1px solid #C4956A',
+              color:       '#C4956A',
+            } : {
+              background:  'rgba(255,255,255,0.04)',
+              border:      '1px solid rgba(255,255,255,0.08)',
+              color:       'rgba(160,152,144,0.8)',
+            }}
+          >
+            {opt.label}
+          </Link>
+        ))}
+      </div>
+
       <MangaCatalog
         initialMangas={mangas}
         categories={categories}
         tags={tags}
       />
 
-      {/* Paginación */}
       {totalPages > 1 && (
-        <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'center' }}>
+        <div className="mt-10 flex justify-center">
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             basePath="/manga"
-            searchParams={{ status, sort }}
+            searchParams={{ status, period, sortBy }}
           />
         </div>
       )}
