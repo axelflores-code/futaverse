@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { MangaScore }     from '@/components/manga/MangaScore'
 import { MangaPageGallery } from '@/components/manga/MangaPageGallery'
 import { FavoriteButton } from '@/components/manga/FavoriteButton'
+import { MangaRelated } from '@/components/manga/MangaRelated'
 
 interface PageProps {
   params: Promise<{ slug: string }>
@@ -293,7 +294,12 @@ export default async function MangaDetailPage({ params }: PageProps) {
         />
         
       </div>
+      <MangaRelated
+  mangaId={manga.id}
+  mangaSlug={manga.slug}
+/>
     </>
+    
   )
 }
 

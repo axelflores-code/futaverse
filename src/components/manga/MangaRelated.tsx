@@ -1,7 +1,3 @@
-// src/components/manga/MangaRelated.tsx
-// Recomienda mangas que comparten tags con el manga actual
-// Estrategia: buscar mangas con más tags en común → más relevantes primero
-
 import { createClient } from '@/lib/supabase/server'
 import Image            from 'next/image'
 import Link             from 'next/link'
