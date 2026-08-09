@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   description: 'La mejor plataforma de manga futanari traducido al español para Latino América. Lee cientos de títulos de manga futa, dickgirl y hentai en español completamente gratis.',
   keywords: [
     'manga futanari español',
-    'manga futa gratis',
+    'manga futa',
     'futanari manga latino',
     'manga dickgirl español',
     'hentai español gratis',
@@ -87,11 +87,10 @@ export default async function HomePage() {
     { data: topTags },
   ] = await Promise.all([
     supabase
-      .from('mangas')
-      .select('*, manga_genres(genres(id,name,slug))')
-      .neq('status', 'draft')
-      .order('score', { ascending: false })
-      .limit(6),
+  .from('mangas')
+  .select('*, manga_genres(genres(id,name,slug))')
+  .order('updated_at', { ascending: false })
+  .limit(50), // traemos 50 y elegimos 6 al azar
     supabase
       .from('mangas')
       .select('*, manga_genres(genres(id,name,slug))')
@@ -112,7 +111,11 @@ export default async function HomePage() {
       .limit(10),
   ])
 
-  const heroMangas    = (heroRaw    ?? []).map(mapManga)
+  // Elige 6 al azar de los 50 más recientes
+const heroPool = (heroRaw ?? []).map(mapManga)
+const heroMangas = heroPool
+  .sort(() => Math.random() - 0.5)
+  .slice(0, 6)
   const popularMangas = (popularRaw ?? []).map(mapManga)
   const latestMangas  = (latestRaw  ?? []).map(mapManga)
 
