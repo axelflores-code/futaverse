@@ -293,11 +293,12 @@ export default async function MangaDetailPage({ params }: PageProps) {
           mangaSlug={slug}
         />
         
-      </div>
-      <MangaRelated
+        <MangaRelated
   mangaId={manga.id}
   mangaSlug={manga.slug}
 />
+      </div>
+      
     </>
     
   )
