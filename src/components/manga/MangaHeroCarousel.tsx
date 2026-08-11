@@ -36,6 +36,9 @@ export function MangaHeroCarousel({ mangas }: MangaHeroCarouselProps) {
             src={manga.coverUrl}
             alt=""
             fill
+            priority
+            sizes="100vw"
+            quality={40}
             className="object-cover scale-110"
             style={{ filter: 'blur(8px)', opacity: 0.90 }}
             aria-hidden
@@ -62,7 +65,6 @@ export function MangaHeroCarousel({ mangas }: MangaHeroCarouselProps) {
             </p>
           )}
 
-          {/* Título más pequeño */}
           <h2
             className="text-2xl md:text-3xl font-black text-white mb-3 leading-tight"
             style={{ borderLeft: '4px solid #C4956A', paddingLeft: '14px' }}
@@ -146,6 +148,7 @@ export function MangaHeroCarousel({ mangas }: MangaHeroCarouselProps) {
               alt={manga.title}
               width={240}
               height={360}
+              sizes="240px"
               className="w-full h-full object-cover"
               priority
             />

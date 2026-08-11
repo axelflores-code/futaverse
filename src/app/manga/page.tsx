@@ -75,35 +75,32 @@ export default async function CatalogPage({
   let mangas: Manga[] = []
   let total           = 0
 
-  if (period !== 'all' || sortBy === 'popular') {
-    // Usar la función RPC para popularidad por período
-    const { data: popularIds } = await supabase.rpc('get_popular_mangas', {
-      period: period === 'all' ? 'all' : period,
-      lim:    200,
+  if (period !== 'all') {
+  const { data: popularIds } = await supabase
+    .rpc('get_popular_mangas', {
+      period: period,
+      lim: 200,
     })
 
-    if (popularIds && popularIds.length > 0) {
-      const ids = popularIds.map((r: { manga_id: string }) => r.manga_id)
+  if (popularIds && popularIds.length > 0) {
+    const ids = popularIds.map((r: { manga_id: string }) => r.manga_id)
+    const pageIds = ids.slice(from, to + 1)
 
-      let query = supabase
-        .from('mangas')
-        .select('*, manga_genres(genres(id,name,slug))', { count: 'exact' })
-        .in('id', ids)
+    let query = supabase
+      .from('mangas')
+      .select('*, manga_genres(genres(id,name,slug))')
+      .in('id', pageIds)
 
-      if (status) query = query.eq('status', status)
+    if (status) query = query.eq('status', status)
 
-      const { data, count } = await query.range(from, to)
-      total  = count ?? 0
+    const { data } = await query
+    total = ids.length
 
-      // Ordenar por popularidad según el resultado del RPC
-      const sorted = (data ?? []).sort((a, b) => {
-        const aIdx = ids.indexOf(a.id)
-        const bIdx = ids.indexOf(b.id)
-        return aIdx - bIdx
-      })
-
-      mangas = sorted.map(mapManga)
-    }
+    const sorted = (data ?? []).sort((a, b) =>
+      pageIds.indexOf(a.id) - pageIds.indexOf(b.id)
+    )
+    mangas = sorted.map(mapManga)
+  }
   } else {
     // Orden normal
     const sortColumn = sortBy === 'score'
