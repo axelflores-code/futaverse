@@ -132,9 +132,54 @@ export default async function MangaDetailPage({ params }: PageProps) {
     <>
     <MangaViewTracker mangaId={manga.id} />
       <JsonLd
-        type="Book"
-        data={{ name: manga.title, description: manga.description, image: manga.cover_url }}
-      />
+  type="Book"
+  data={{
+    '@id':
+      `https://mangafuta.com/manga/${manga.slug}#book`,
+
+    url:
+      `https://mangafuta.com/manga/${manga.slug}`,
+
+    name: manga.title,
+
+    description:
+      manga.description ??
+      `Lee ${manga.title} en español en MangaFuta.`,
+
+    image: manga.cover_url
+      ? [manga.cover_url]
+      : undefined,
+
+    inLanguage: 'es',
+
+    contentRating: '18+',
+
+    isFamilyFriendly: false,
+
+    author: manga.author
+      ? {
+          '@type': 'Person',
+          name: manga.author,
+        }
+      : undefined,
+
+    genre: genres.map(
+      (genre) => genre.name
+    ),
+
+    datePublished:
+      manga.created_at ?? undefined,
+
+    dateModified:
+      manga.updated_at ?? undefined,
+
+    publisher: {
+      '@type': 'Organization',
+      name: 'MangaFuta',
+      url: 'https://mangafuta.com',
+    },
+  }}
+/>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
 
@@ -192,9 +237,9 @@ export default async function MangaDetailPage({ params }: PageProps) {
               {manga.title}
             </h1>
 
-            {manga.autor && (
+            {manga.author && (
               <p className="text-sm text-zinc-400 mb-3">
-                por <span className="text-white">{manga.autor}</span>
+                por <span className="text-white">{manga.author}</span>
               </p>
             )}
 
