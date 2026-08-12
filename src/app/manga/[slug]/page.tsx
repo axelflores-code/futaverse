@@ -60,7 +60,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       type: 'book',
       url: `https://mangafuta.com/manga/${slug}`,
       siteName: 'MangaFuta',
-      locale: 'es_LA',
+      locale: 'es_ES',
       images: manga.cover_url ? [{ url: manga.cover_url, alt: title }] : [],
     },
     twitter: {

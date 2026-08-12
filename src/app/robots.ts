@@ -1,4 +1,6 @@
-import type { MetadataRoute } from 'next';
+import type { MetadataRoute } from 'next'
+
+const BASE_URL = 'https://mangafuta.com'
 
 export default function robots(): MetadataRoute.Robots {
   return {
@@ -6,10 +8,14 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/', '/admin/'],
+        disallow: [
+          '/api/',
+          '/admin/',
+        ],
       },
     ],
-    sitemap: 'https://mangafuta.com/sitemap.xml',
-    host: 'https://mangafuta.com',
-  };
+
+    sitemap: `${BASE_URL}/sitemap.xml`,
+    host: BASE_URL,
+  }
 }

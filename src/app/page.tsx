@@ -30,11 +30,11 @@ export const metadata: Metadata = {
     canonical: 'https://mangafuta.com',
   },
   openGraph: {
-    title: 'MangaFuta — Manga Futanari en Español',
+    title: 'Manga Futanari en Español — Lee Gratis | MangaFuta',
     description: 'La mejor plataforma de manga futanari traducido al español para Latino América. Lee gratis.',
     url: 'https://mangafuta.com',
     siteName: 'MangaFuta',
-    locale: 'es_LA',
+    locale: 'es_ES',
     type: 'website',
     images: [{ url: '/og-image.jpg', width: 1200, height: 630, alt: 'MangaFuta' }],
   },
@@ -86,9 +86,10 @@ export default async function HomePage() {
     { data: latestRaw },
     { data: topTags },
   ] = await Promise.all([
-    supabase
+   supabase
   .from('mangas')
   .select('*, manga_genres(genres(id,name,slug))')
+  .neq('status', 'draft')
   .order('updated_at', { ascending: false })
   .limit(50), // traemos 50 y elegimos 6 al azar
     supabase
@@ -159,13 +160,36 @@ const tagSections = await Promise.all(
       <MangaHeroCarousel mangas={heroMangas} />
 
       {/* Texto SEO visible para Google */}
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px 0' }}>
-        <p style={{ fontSize: '13px', color: 'rgba(160,152,144,0.4)', lineHeight: 1.6 }}>
-          Bienvenido a <strong style={{ color: 'rgba(160,152,144,0.6)' }}>MangaFuta</strong> — 
-          la plataforma líder de <strong style={{ color: 'rgba(160,152,144,0.6)' }}>manga futanari en español</strong> para Latino América. 
-          Lee gratis los mejores títulos de manga futa, dickgirl y hentai traducidos al español.
-        </p>
-      </div>
+      <div
+  style={{
+    maxWidth: '1280px',
+    margin: '0 auto',
+    padding: '24px 16px 0',
+  }}
+>
+  <h1
+    style={{
+      fontSize: '24px',
+      fontWeight: 800,
+      color: '#f0ece8',
+      marginBottom: '8px',
+    }}
+  >
+    Manga futanari en español
+  </h1>
+
+  <p
+    style={{
+      fontSize: '13px',
+      color: 'rgba(160,152,144,0.4)',
+      lineHeight: 1.6,
+    }}
+  >
+    Bienvenido a MangaFuta, una plataforma de manga futanari
+    traducido al español para Latinoamérica. Explora títulos de
+    manga futa y contenido para adultos disponible gratuitamente.
+  </p>
+</div>
 
       <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
 
