@@ -1,13 +1,19 @@
 import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { Pagination } from '@/components/ui/Pagination'
 import Link from 'next/link'
 
 export const revalidate = 3600
 
+const PAGE_SIZE = 120
+
+type TagOrder = 'popular' | 'az'
+
 interface PageProps {
   searchParams: Promise<{
     sort?: string
-    ns?: string
+    page?: string
   }>
 }
 
@@ -15,68 +21,48 @@ interface TagRow {
   id: string
   name: string
   slug: string
-  namespace: string
   usage_count: number
 }
 
-const NS_CONFIG: Record<
-  string,
-  {
-    label: string
-    emoji: string
-    color: string
+function parsePage(value?: string): number {
+  const parsed = Number.parseInt(value ?? '1', 10)
+
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return 1
   }
-> = {
-  theme: {
-    label: 'Temas',
-    emoji: '🎭',
-    color: '#C4956A',
-  },
-  trope: {
-    label: 'Tropos',
-    emoji: '✨',
-    color: '#4A6FBF',
-  },
-  setting: {
-    label: 'Ambientación',
-    emoji: '🌍',
-    color: '#1D9E75',
-  },
-  format: {
-    label: 'Formato',
-    emoji: '📐',
-    color: '#7F77DD',
-  },
-  content_warning: {
-    label: 'Advertencias',
-    emoji: '⚠️',
-    color: '#E8424A',
-  },
+
+  return parsed
 }
 
-const VALID_SORTS = [
-  'az',
-  'za',
-  'popular',
-]
+function parseSort(value?: string): TagOrder {
+  return value === 'az' ? 'az' : 'popular'
+}
 
 export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const params = await searchParams
+  const page = parsePage(params.page)
+  const sort = parseSort(params.sort)
 
-  const hasFilters =
+  const hasVariant =
     params.sort !== undefined ||
-    params.ns !== undefined
+    page > 1
 
   const title =
-    'Tags de manga futanari en español'
+    sort === 'az'
+      ? 'Tags de manga futa de la A a la Z'
+      : 'Tags populares de manga futa'
 
   const description =
-    'Explora los temas, formatos, tropos y etiquetas de los doujinshis disponibles en MangaFuta.'
+    'Explora todos los tags de manga futa en español disponibles en MangaFuta.'
 
   return {
-    title,
+    title:
+      page > 1
+        ? `${title} — Página ${page}`
+        : title,
+
     description,
 
     alternates: {
@@ -84,11 +70,11 @@ export async function generateMetadata({
     },
 
     robots: {
-      index: !hasFilters,
+      index: !hasVariant,
       follow: true,
 
       googleBot: {
-        index: !hasFilters,
+        index: !hasVariant,
         follow: true,
         'max-snippet': -1,
       },
@@ -110,13 +96,6 @@ export async function generateMetadata({
         },
       ],
     },
-
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: ['/og-image.jpg'],
-    },
   }
 }
 
@@ -125,447 +104,349 @@ export default async function TagsPage({
 }: PageProps) {
   const params = await searchParams
 
-  const sort = VALID_SORTS.includes(
-    params.sort ?? ''
-  )
-    ? params.sort!
-    : 'az'
+  const currentPage = parsePage(params.page)
+  const sort = parseSort(params.sort)
 
-  const nsFilter =
-    params.ns && NS_CONFIG[params.ns]
-      ? params.ns
-      : undefined
+  const from =
+    (currentPage - 1) * PAGE_SIZE
+
+  const to =
+    from + PAGE_SIZE - 1
 
   const supabase = await createClient()
 
-  const [
-    { data: tagsRaw, error: tagsError },
-    { count: totalMangas },
-  ] = await Promise.all([
-    supabase
-      .from('tags')
-      .select(
-        'id, name, slug, namespace, usage_count'
-      )
-      /*
-       * Evitamos enlazar páginas demasiado débiles
-       * con cero o un solo manga.
-       */
-      .gte('usage_count', 2),
-
-    supabase
-      .from('mangas')
-      .select('id', {
+  let query = supabase
+    .from('tags')
+    .select(
+      'id, name, slug, usage_count',
+      {
         count: 'exact',
-        head: true,
-      })
-      .neq('status', 'draft'),
-  ])
+      }
+    )
+    .gte('usage_count', 2)
 
-  if (tagsError) {
+  if (sort === 'popular') {
+    query = query
+      .order('usage_count', {
+        ascending: false,
+      })
+      .order('name', {
+        ascending: true,
+      })
+  } else {
+    query = query.order('name', {
+      ascending: true,
+    })
+  }
+
+  const {
+    data: tagsRaw,
+    count,
+    error,
+  } = await query.range(from, to)
+
+  if (error) {
     console.error(
       'Error cargando tags:',
-      tagsError.message
+      error.message
     )
   }
 
   const tags =
     (tagsRaw ?? []) as TagRow[]
 
-  const filteredTags = nsFilter
-    ? tags.filter(
-        (tag) =>
-          tag.namespace === nsFilter
-      )
-    : tags
+  const total = count ?? 0
 
-  const sortedTags = [...filteredTags].sort(
-    (first, second) => {
-      if (sort === 'za') {
-        return second.name.localeCompare(
-          first.name,
-          'es'
-        )
-      }
+  const totalPages =
+    Math.ceil(total / PAGE_SIZE)
 
-      if (sort === 'popular') {
-        return (
-          second.usage_count -
-          first.usage_count
-        )
-      }
-
-      return first.name.localeCompare(
-        second.name,
-        'es'
-      )
-    }
-  )
-
-  const grouped = Object.keys(
-    NS_CONFIG
-  ).reduce(
+  if (
+    currentPage > 1 &&
     (
-      accumulator,
-      namespace
-    ) => {
-      accumulator[namespace] =
-        sortedTags.filter(
-          (tag) =>
-            tag.namespace === namespace
-        )
-
-      return accumulator
-    },
-    {} as Record<string, TagRow[]>
-  )
-
-  const namespaceCounts = Object.keys(
-    NS_CONFIG
-  ).reduce(
-    (
-      accumulator,
-      namespace
-    ) => {
-      accumulator[namespace] =
-        tags.filter(
-          (tag) =>
-            tag.namespace === namespace
-        ).length
-
-      return accumulator
-    },
-    {} as Record<string, number>
-  )
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <header className="mb-10">
-        <h1
-          className="text-3xl font-black mb-2"
-          style={{ color: '#f0ece8' }}
-        >
-          Explorar tags de manga
-        </h1>
-
-        <p
-          className="text-sm"
-          style={{
-            color:
-              'rgba(160,152,144,1)',
-          }}
-        >
-          {tags.length} tags disponibles ·{' '}
-          {(totalMangas ?? 0).toLocaleString()}{' '}
-          doujinshis en la plataforma
-        </p>
-      </header>
-
-      {/* Tipos de tags */}
-      <nav
-        aria-label="Tipos de tags"
-        className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-8"
-      >
-        {Object.entries(NS_CONFIG).map(
-          ([namespace, config]) => {
-            const active =
-              nsFilter === namespace
-
-            return (
-              <Link
-                key={namespace}
-                href={
-                  active
-                    ? '/tags'
-                    : `/tags?ns=${namespace}&sort=${sort}`
-                }
-                className="flex flex-col gap-1 p-4 rounded-xl border transition-all"
-                style={{
-                  background: active
-                    ? `${config.color}15`
-                    : 'rgba(255,255,255,0.03)',
-
-                  borderColor: active
-                    ? `${config.color}40`
-                    : 'rgba(255,255,255,0.06)',
-                }}
-              >
-                <span
-                  className="text-xl"
-                  aria-hidden="true"
-                >
-                  {config.emoji}
-                </span>
-
-                <span
-                  className="text-xs font-semibold"
-                  style={{
-                    color: active
-                      ? config.color
-                      : '#f0ece8',
-                  }}
-                >
-                  {config.label}
-                </span>
-
-                <span
-                  className="text-xs"
-                  style={{
-                    color:
-                      'rgba(96,88,80,1)',
-                  }}
-                >
-                  {namespaceCounts[namespace] ??
-                    0}{' '}
-                  tags
-                </span>
-              </Link>
-            )
-          }
-        )}
-      </nav>
-
-      {/* Ordenamiento */}
-      <nav
-        aria-label="Ordenar tags"
-        className="flex items-center gap-2 mb-8 flex-wrap"
-      >
-        <span
-          className="text-xs font-semibold uppercase tracking-wider"
-          style={{
-            color:
-              'rgba(96,88,80,1)',
-          }}
-        >
-          Ordenar:
-        </span>
-
-        {[
-          {
-            value: 'az',
-            label: 'A → Z',
-          },
-          {
-            value: 'za',
-            label: 'Z → A',
-          },
-          {
-            value: 'popular',
-            label: 'Populares',
-          },
-        ].map((option) => (
-          <Link
-            key={option.value}
-            href={
-              option.value === 'az' &&
-              !nsFilter
-                ? '/tags'
-                : `/tags?sort=${option.value}${
-                    nsFilter
-                      ? `&ns=${nsFilter}`
-                      : ''
-                  }`
-            }
-            className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background:
-                sort === option.value
-                  ? 'rgba(196,149,106,0.15)'
-                  : 'rgba(255,255,255,0.04)',
-
-              border: `1px solid ${
-                sort === option.value
-                  ? 'rgba(196,149,106,0.40)'
-                  : 'rgba(255,255,255,0.06)'
-              }`,
-
-              color:
-                sort === option.value
-                  ? '#C4956A'
-                  : 'rgba(160,152,144,1)',
-            }}
-          >
-            {option.label}
-          </Link>
-        ))}
-
-        {nsFilter && (
-          <Link
-            href="/tags"
-            className="ml-auto text-xs px-3 py-1.5 rounded-lg transition-all"
-            style={{
-              background:
-                'rgba(232,66,74,0.10)',
-
-              border:
-                '1px solid rgba(232,66,74,0.25)',
-
-              color: '#E8424A',
-            }}
-          >
-            ✕ Quitar filtro
-          </Link>
-        )}
-      </nav>
-
-      {nsFilter ? (
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <span
-              className="text-xl"
-              aria-hidden="true"
-            >
-              {NS_CONFIG[nsFilter].emoji}
-            </span>
-
-            <h2
-              className="text-lg font-bold"
-              style={{ color: '#f0ece8' }}
-            >
-              {NS_CONFIG[nsFilter].label}
-            </h2>
-
-            <span
-              className="text-xs px-2 py-0.5 rounded-full"
-              style={{
-                background:
-                  'rgba(255,255,255,0.06)',
-
-                color:
-                  'rgba(160,152,144,1)',
-              }}
-            >
-              {sortedTags.length} tags
-            </span>
-          </div>
-
-          <TagCloud
-            tags={sortedTags}
-            color={
-              NS_CONFIG[nsFilter].color
-            }
-          />
-        </section>
-      ) : (
-        <div className="flex flex-col gap-10">
-          {Object.entries(NS_CONFIG).map(
-            ([namespace, config]) => {
-              const namespaceTags =
-                grouped[namespace] ?? []
-
-              if (
-                namespaceTags.length === 0
-              ) {
-                return null
-              }
-
-              return (
-                <section key={namespace}>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="text-xl"
-                        aria-hidden="true"
-                      >
-                        {config.emoji}
-                      </span>
-
-                      <h2
-                        className="text-base font-bold"
-                        style={{
-                          color: '#f0ece8',
-                        }}
-                      >
-                        {config.label}
-                      </h2>
-
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full"
-                        style={{
-                          background:
-                            'rgba(255,255,255,0.06)',
-
-                          color:
-                            'rgba(160,152,144,1)',
-                        }}
-                      >
-                        {namespaceTags.length}
-                      </span>
-                    </div>
-
-                    <Link
-                      href={`/tags?ns=${namespace}`}
-                      className="text-xs transition-colors"
-                      style={{
-                        color: config.color,
-                      }}
-                    >
-                      Ver todos →
-                    </Link>
-                  </div>
-
-                  <TagCloud
-                    tags={namespaceTags}
-                    color={config.color}
-                  />
-                </section>
-              )
-            }
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function TagCloud({
-  tags,
-  color,
-}: {
-  tags: TagRow[]
-  color: string
-}) {
-  if (tags.length === 0) {
-    return (
-      <p
-        style={{
-          color:
-            'rgba(160,152,144,0.5)',
-          fontSize: '13px',
-        }}
-      >
-        No hay tags disponibles en esta sección.
-      </p>
+      totalPages === 0 ||
+      currentPage > totalPages
     )
+  ) {
+    notFound()
+  }
+
+  const paginationParams: Record<
+    string,
+    string
+  > = {}
+
+  if (sort === 'az') {
+    paginationParams.sort = 'az'
   }
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {tags.map((tag) => (
-        <Link
-          key={tag.id}
-          href={`/tag/${tag.slug}`}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:scale-105"
-          style={{
-            background: `${color}12`,
-            border: `1px solid ${color}25`,
-            color:
-              'rgba(200,192,184,1)',
-          }}
-        >
-          {tag.name}
+    <main className="tags-page">
+      <header className="tags-header">
+        <h1>Tags</h1>
 
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded-full font-bold"
-            style={{
-              background: `${color}25`,
-              color,
-            }}
-          >
-            {tag.usage_count}
-          </span>
+        <p>
+          Explora {total.toLocaleString()} tags
+          de manga futa en español
+        </p>
+      </header>
+
+      <nav
+        aria-label="Ordenar tags"
+        className="tags-order"
+      >
+        <Link
+          href="/tags"
+          className={
+            sort === 'popular'
+              ? 'active'
+              : ''
+          }
+        >
+          Popular
         </Link>
-      ))}
-    </div>
+
+        <Link
+          href="/tags?sort=az"
+          className={
+            sort === 'az'
+              ? 'active'
+              : ''
+          }
+        >
+          A–Z
+        </Link>
+      </nav>
+
+      {tags.length === 0 ? (
+        <div className="tags-empty">
+          No hay tags disponibles.
+        </div>
+      ) : (
+        <section
+          aria-label="Lista de tags"
+          className="tags-panel"
+        >
+          <div className="tags-columns">
+            {tags.map((tag) => (
+              <Link
+                key={tag.id}
+                href={`/tag/${tag.slug}`}
+                className="tag-row"
+              >
+                <span className="tag-name">
+                  {tag.name}
+                </span>
+
+                <span className="tag-count">
+                  {tag.usage_count >= 1000
+                    ? `${(
+                        tag.usage_count / 1000
+                      ).toFixed(1)}k`
+                    : tag.usage_count}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {totalPages > 1 && (
+        <div className="tags-pagination">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            basePath="/tags"
+            searchParams={paginationParams}
+          />
+        </div>
+      )}
+
+      <style>{`
+        .tags-page {
+          width: 100%;
+          max-width: 1260px;
+          margin: 0 auto;
+          padding: 38px 16px 56px;
+        }
+
+        .tags-header {
+          margin-bottom: 18px;
+          text-align: center;
+        }
+
+        .tags-header h1 {
+          margin-bottom: 5px;
+          color: #f5f1ed;
+          font-size: 30px;
+          font-weight: 900;
+          letter-spacing: -0.025em;
+        }
+
+        .tags-header p {
+          color: rgba(175, 167, 158, 0.62);
+          font-size: 13px;
+        }
+
+        .tags-order {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 22px;
+        }
+
+        .tags-order a {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 44px;
+          padding: 9px 16px;
+          background: #16161b;
+          color: rgba(225, 220, 215, 0.78);
+          font-size: 15px;
+          font-weight: 700;
+          text-decoration: none;
+          transition:
+            background 150ms ease,
+            color 150ms ease;
+        }
+
+        .tags-order a:first-child {
+          border-radius: 6px 0 0 6px;
+        }
+
+        .tags-order a:last-child {
+          border-radius: 0 6px 6px 0;
+        }
+
+        .tags-order a:hover {
+          background: #29282b;
+          color: white;
+        }
+
+        .tags-order a.active {
+          background: #464446;
+          color: white;
+        }
+
+        .tags-panel {
+          padding: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          border-radius: 7px;
+          background: #1b1b20;
+        }
+
+        .tags-columns {
+          columns: 6;
+          column-gap: 14px;
+        }
+
+        .tag-row {
+          display: flex;
+          align-items: stretch;
+          width: 100%;
+          min-height: 27px;
+          margin-bottom: 3px;
+          break-inside: avoid;
+          overflow: hidden;
+          border-radius: 3px;
+          color: white;
+          text-decoration: none;
+          transition:
+            transform 120ms ease,
+            filter 120ms ease;
+        }
+
+        .tag-row:hover {
+          z-index: 2;
+          filter: brightness(1.14);
+          transform: translateX(2px);
+        }
+
+        .tag-name {
+          display: flex;
+          flex: 1;
+          align-items: center;
+          min-width: 0;
+          padding: 4px 7px;
+          overflow: hidden;
+          background: #565658;
+          color: #fff;
+          font-size: 12px;
+          line-height: 1.2;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .tag-count {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          min-width: 42px;
+          padding: 4px 6px;
+          background: #2d2d31;
+          color: #f0ece8;
+          font-size: 11px;
+          font-variant-numeric: tabular-nums;
+        }
+
+        .tags-pagination {
+          display: flex;
+          justify-content: center;
+          margin-top: 28px;
+        }
+
+        .tags-empty {
+          padding: 70px 16px;
+          text-align: center;
+          color: rgba(175, 167, 158, 0.6);
+        }
+
+        @media (max-width: 1100px) {
+          .tags-columns {
+            columns: 5;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .tags-columns {
+            columns: 4;
+          }
+        }
+
+        @media (max-width: 700px) {
+          .tags-columns {
+            columns: 3;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .tags-page {
+            padding-top: 28px;
+          }
+
+          .tags-header h1 {
+            font-size: 26px;
+          }
+
+          .tags-panel {
+            padding: 8px;
+          }
+
+          .tags-columns {
+            columns: 2;
+            column-gap: 8px;
+          }
+
+          .tag-name {
+            padding: 4px 6px;
+            font-size: 11px;
+          }
+
+          .tag-count {
+            min-width: 34px;
+            font-size: 10px;
+          }
+        }
+      `}</style>
+    </main>
   )
 }

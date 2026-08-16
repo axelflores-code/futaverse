@@ -587,7 +587,7 @@ export default async function CatalogPage({
             fontWeight: 800,
           }}
         >
-          Catálogo de doujinshis
+          Disfruta toda nuestra colección de manga futa
         </h1>
 
         <p

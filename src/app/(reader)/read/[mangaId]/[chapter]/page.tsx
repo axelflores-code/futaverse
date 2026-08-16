@@ -1,52 +1,117 @@
-import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
-import { MangaReader } from '@/components/reader/MangaReader';
-import { getChapterWithAdjacentNav } from '@/lib/queries/chapters';
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
+import { MangaReader } from '@/components/reader/MangaReader'
+import { getChapterWithAdjacentNav } from '@/lib/queries/chapters'
 import Script from 'next/script'
 
 interface PageProps {
-  params: Promise<{ mangaId: string; chapter: string }>;
+  params: Promise<{
+    mangaId: string
+    chapter: string
+  }>
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { mangaId, chapter } = await params;
-  const data = await getChapterWithAdjacentNav(mangaId, Number(chapter));
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { mangaId, chapter } = await params
+  const chapterNumber = Number(chapter)
 
-  if (!data) return { title: 'Capítulo no encontrado' };
+  if (
+    !Number.isFinite(chapterNumber) ||
+    chapterNumber < 0
+  ) {
+    return {
+      title: 'Capítulo no encontrado',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    }
+  }
+
+  const data = await getChapterWithAdjacentNav(
+    mangaId,
+    chapterNumber
+  )
+
+  if (!data) {
+    return {
+      title: 'Capítulo no encontrado',
+      robots: {
+        index: false,
+        follow: false,
+      },
+    }
+  }
+
+  const mangaUrl =
+    `https://mangafuta.com/manga/${data.manga.slug}`
 
   return {
-    title: `${data.manga.title} — Capítulo ${chapter}`,
-    description: `Lee ${data.manga.title} capítulo ${chapter} gratis en MangaFuta.`,
-    robots: { index: true, follow: true }, // o directamente omite la propiedad "robots"
-};
+    title:
+      `${data.manga.title} — Capítulo ${chapterNumber}`,
+
+    description:
+      `Lee el capítulo ${chapterNumber} de ${data.manga.title} en MangaFuta.`,
+
+    alternates: {
+      canonical: mangaUrl,
+    },
+
+    robots: {
+      index: false,
+      follow: true,
+
+      googleBot: {
+        index: false,
+        follow: true,
+        'max-image-preview': 'large',
+      },
+    },
+
+    openGraph: {
+      type: 'website',
+      locale: 'es_ES',
+      siteName: 'MangaFuta',
+      title:
+        `${data.manga.title} — Capítulo ${chapterNumber}`,
+      description:
+        `Lee el capítulo ${chapterNumber} de ${data.manga.title} en MangaFuta.`,
+      url: mangaUrl,
+    },
+  }
 }
 
-export default async function ReaderPage({ params }: PageProps) {
-  const { mangaId, chapter } = await params;
-  const chapterNum = Number(chapter);
+export default async function ReaderPage({
+  params,
+}: PageProps) {
+  const { mangaId, chapter } = await params
+  const chapterNumber = Number(chapter)
 
-  if (isNaN(chapterNum)) notFound();
+  if (
+    !Number.isFinite(chapterNumber) ||
+    chapterNumber < 0
+  ) {
+    notFound()
+  }
 
-  const data = await getChapterWithAdjacentNav(mangaId, chapterNum);
+  const data = await getChapterWithAdjacentNav(
+    mangaId,
+    chapterNumber
+  )
 
-  if (!data) notFound();
-
-  // Incrementar contador de vistas (fire-and-forget)
-  const supabase = await createClient();
-  supabase
-    .from('chapters')
-    .update({ views: Number(data.chapter.views) + 1 })
-    .eq('id', data.chapter.id)
-    .then(() => {});
+  if (!data) {
+    notFound()
+  }
 
   return (
     <>
       <Script
-  id="popads"
-  src="/popads.js"
-  strategy="lazyOnload"
-/>
+        id="popads"
+        src="/popads.js"
+        strategy="lazyOnload"
+      />
 
       <MangaReader
         chapter={data.chapter}
@@ -55,5 +120,5 @@ export default async function ReaderPage({ params }: PageProps) {
         nextChapter={data.next}
       />
     </>
-  );
+  )
 }
