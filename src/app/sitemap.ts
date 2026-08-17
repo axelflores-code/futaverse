@@ -1,9 +1,18 @@
-import type { MetadataRoute } from 'next'
-import { createPublicClient } from '@/lib/supabase/public'
+import type {
+  MetadataRoute,
+} from 'next'
 
-const BASE_URL = 'https://mangafuta.com'
+import {
+  createPublicClient,
+} from '@/lib/supabase/public'
+
+const BASE_URL =
+  'https://mangafuta.com'
+
 const BATCH_SIZE = 1000
 const MIN_TAG_MANGAS = 2
+
+export const revalidate = 3600
 
 interface MangaRow {
   slug: string
@@ -12,128 +21,271 @@ interface MangaRow {
 
 interface TagRow {
   slug: string
-  manga_tags: Array<{
-    manga_id: string
-  }>
+  usage_count:
+    | number
+    | string
+    | null
 }
 
-export const revalidate = 3600
-
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
- const supabase = createPublicClient()
-
-  async function getAllMangas(): Promise<MangaRow[]> {
-    const results: MangaRow[] = []
-    let offset = 0
-
-    while (true) {
-      const { data, error } = await supabase
-        .from('mangas')
-        .select('slug, updated_at')
-        .not('slug', 'is', null)
-        .order('slug', { ascending: true })
-        .range(offset, offset + BATCH_SIZE - 1)
-
-      if (error) {
-        console.error(
-          'Error obteniendo mangas para sitemap:',
-          error
-        )
-        break
-      }
-
-      const rows = (data ?? []) as MangaRow[]
-
-      results.push(...rows)
-
-      if (rows.length < BATCH_SIZE) {
-        break
-      }
-
-      offset += BATCH_SIZE
-    }
-
-    return results
+function getValidDate(
+  value: string | null
+): Date | undefined {
+  if (!value) {
+    return undefined
   }
 
-  async function getValidTags(): Promise<TagRow[]> {
-    const results: TagRow[] = []
-    let offset = 0
+  const date = new Date(value)
 
-    while (true) {
-      const { data, error } = await supabase
-        .from('tags')
-        .select(`
-          slug,
-          manga_tags!inner (
-            manga_id
-          )
-        `)
-        .not('slug', 'is', null)
-        .order('slug', { ascending: true })
-        .range(offset, offset + BATCH_SIZE - 1)
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return undefined
+  }
 
-      if (error) {
-        console.error(
-          'Error obteniendo tags para sitemap:',
-          error
-        )
-        break
-      }
+  return date
+}
 
-      const rows = (data ?? []) as TagRow[]
+async function getAllMangas():
+  Promise<MangaRow[]> {
+  const supabase =
+    createPublicClient()
 
-      results.push(
-        ...rows.filter(
-          (tag) =>
-            (tag.manga_tags?.length ?? 0) >=
-            MIN_TAG_MANGAS
-        )
+  const results:
+    MangaRow[] = []
+
+  let offset = 0
+
+  while (true) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('mangas')
+      .select(`
+        slug,
+        updated_at
+      `)
+      .neq('status', 'draft')
+      .not('slug', 'is', null)
+      .neq('slug', '')
+      .order(
+        'slug',
+        {
+          ascending: true,
+        }
+      )
+      .range(
+        offset,
+        offset +
+          BATCH_SIZE -
+          1
       )
 
-      if (rows.length < BATCH_SIZE) {
-        break
-      }
-
-      offset += BATCH_SIZE
+    if (error) {
+      /*
+       * No generamos un sitemap incompleto.
+       * Next.js conservará la versión anterior
+       * si la regeneración falla.
+       */
+      throw new Error(
+        `Error obteniendo mangas para sitemap: ${error.message}`
+      )
     }
 
-    return results
+    const rows =
+      (
+        data ?? []
+      ) as unknown as
+        MangaRow[]
+
+    results.push(...rows)
+
+    if (
+      rows.length <
+      BATCH_SIZE
+    ) {
+      break
+    }
+
+    offset +=
+      BATCH_SIZE
   }
 
-  const [mangas, tags] = await Promise.all([
+  return results
+}
+
+async function getValidTags():
+  Promise<TagRow[]> {
+  const supabase =
+    createPublicClient()
+
+  const results:
+    TagRow[] = []
+
+  let offset = 0
+
+  while (true) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('tags')
+      .select(`
+        slug,
+        usage_count
+      `)
+      .gte(
+        'usage_count',
+        MIN_TAG_MANGAS
+      )
+      .not('slug', 'is', null)
+      .neq('slug', '')
+      .order(
+        'slug',
+        {
+          ascending: true,
+        }
+      )
+      .range(
+        offset,
+        offset +
+          BATCH_SIZE -
+          1
+      )
+
+    if (error) {
+      throw new Error(
+        `Error obteniendo tags para sitemap: ${error.message}`
+      )
+    }
+
+    const rows =
+      (
+        data ?? []
+      ) as unknown as
+        TagRow[]
+
+    results.push(...rows)
+
+    if (
+      rows.length <
+      BATCH_SIZE
+    ) {
+      break
+    }
+
+    offset +=
+      BATCH_SIZE
+  }
+
+  return results
+}
+
+export default async function sitemap():
+  Promise<MetadataRoute.Sitemap> {
+  const [
+    mangasRaw,
+    tagsRaw,
+  ] = await Promise.all([
     getAllMangas(),
     getValidTags(),
   ])
 
-  const mangaUrls: MetadataRoute.Sitemap = mangas.map(
-    (manga) => ({
-      url: `${BASE_URL}/manga/${manga.slug}`,
+  /*
+   * Protección adicional contra registros
+   * duplicados en la base de datos.
+   */
+  const mangas =
+    Array.from(
+      new Map(
+        mangasRaw.map(
+          (manga) => [
+            manga.slug,
+            manga,
+          ]
+        )
+      ).values()
+    )
 
-      ...(manga.updated_at
-        ? {
-            lastModified: new Date(manga.updated_at),
+  const tags =
+    Array.from(
+      new Map(
+        tagsRaw.map(
+          (tag) => [
+            tag.slug,
+            tag,
+          ]
+        )
+      ).values()
+    )
+
+  const mangaUrls:
+    MetadataRoute.Sitemap =
+      mangas.map(
+        (manga) => {
+          const lastModified =
+            getValidDate(
+              manga.updated_at
+            )
+
+          return {
+            url:
+              `${BASE_URL}/manga/${manga.slug}`,
+
+            ...(lastModified
+              ? {
+                  lastModified,
+                }
+              : {}),
+
+            changeFrequency:
+              'weekly' as const,
+
+            priority:
+              0.8,
           }
-        : {}),
-    })
-  )
+        }
+      )
 
-  const tagUrls: MetadataRoute.Sitemap = tags.map(
-    (tag) => ({
-      url: `${BASE_URL}/tag/${tag.slug}`,
-    })
-  )
+  const tagUrls:
+    MetadataRoute.Sitemap =
+      tags.map(
+        (tag) => ({
+          url:
+            `${BASE_URL}/tag/${tag.slug}`,
 
- return [
-  {
-    url: BASE_URL,
-  },
-  {
-    url: `${BASE_URL}/manga`,
-  },
-  {
-    url: `${BASE_URL}/tags`,
-  },
-  ...mangaUrls,
-  ...tagUrls,
-] }
+          changeFrequency:
+            'weekly' as const,
+
+          priority:
+            0.6,
+        })
+      )
+
+  return [
+    {
+      url: BASE_URL,
+      changeFrequency:
+        'daily',
+      priority: 1,
+    },
+    {
+      url:
+        `${BASE_URL}/manga`,
+      changeFrequency:
+        'daily',
+      priority: 0.9,
+    },
+    {
+      url:
+        `${BASE_URL}/tags`,
+      changeFrequency:
+        'weekly',
+      priority: 0.7,
+    },
+    ...mangaUrls,
+    ...tagUrls,
+  ]
+}

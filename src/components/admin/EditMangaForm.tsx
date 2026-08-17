@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
-interface Tag      { id: string; name: string; namespace: string }
+interface Tag      { id: string; name: string; slug: string; namespace: string }
 interface Genre    { id: string; name: string; slug: string }
 interface Category { id: string; name: string; slug: string; color_hex: string | null }
 
@@ -50,7 +50,7 @@ export function EditMangaForm({
     status:      manga.status      as string,
     rating:      manga.rating      as string,
     score:       String(manga.score),
-    autor:      manga.autor      as string ?? '',
+    author:      (manga.author as string | null) ?? '',
   })
 
   const [selectedTags,       setSelectedTags]       = useState<string[]>(activeTags)
@@ -71,11 +71,13 @@ export function EditMangaForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
+    setSuccess(false)
     setError(null)
 
     try {
       const supabase = createClient()
       const mangaId  = manga.id as string
+      const previousSlug = manga.slug as string
       let coverUrl   = manga.cover_url as string | null
 
       // Subir nueva portada si hay
@@ -83,13 +85,9 @@ export function EditMangaForm({
   const ext  = coverFile.name.split('.').pop()
   const path = `${form.slug}/cover.${ext}`
 
-  console.log('Subiendo portada:', path, 'tamaño:', coverFile.size)
-
-  const { data: uploadData, error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from('manga-covers')
     .upload(path, coverFile, { upsert: true })
-
-  console.log('Upload result:', uploadData, 'error:', uploadError?.message, uploadError?.cause)
 
   if (uploadError) throw new Error(`Error portada: ${uploadError.message}`)
 
@@ -104,46 +102,96 @@ export function EditMangaForm({
       const { error: updateError } = await supabase
         .from('mangas')
         .update({
-          title:       form.title,
-          slug:        form.slug,
-          description: form.description || null,
+          title:       form.title.trim(),
+          slug:        form.slug.trim(),
+          description: form.description.trim() || null,
           cover_url:   coverUrl,
           status:      form.status,
           rating:      form.rating,
-          score:       parseFloat(form.score),
-          autor:      form.autor || null,
+          score:       Number.parseFloat(form.score) || 0,
+          author:      form.author.trim() || null,
         })
         .eq('id', mangaId)
 
       if (updateError) throw new Error(updateError.message)
 
       // Actualizar tags
-      await supabase.from('manga_tags').delete().eq('manga_id', mangaId)
+      const { error: deleteTagsError } = await supabase
+        .from('manga_tags')
+        .delete()
+        .eq('manga_id', mangaId)
+
+      if (deleteTagsError) throw new Error(`Error eliminando tags anteriores: ${deleteTagsError.message}`)
+
       if (selectedTags.length > 0) {
-        await supabase.from('manga_tags').insert(
+        const { error: insertTagsError } = await supabase.from('manga_tags').insert(
           selectedTags.map(tag_id => ({ manga_id: mangaId, tag_id }))
         )
+
+        if (insertTagsError) throw new Error(`Error guardando tags: ${insertTagsError.message}`)
       }
 
       // Actualizar géneros
-      await supabase.from('manga_genres').delete().eq('manga_id', mangaId)
+      const { error: deleteGenresError } = await supabase
+        .from('manga_genres')
+        .delete()
+        .eq('manga_id', mangaId)
+
+      if (deleteGenresError) throw new Error(`Error eliminando géneros anteriores: ${deleteGenresError.message}`)
+
       if (selectedGenres.length > 0) {
-        await supabase.from('manga_genres').insert(
+        const { error: insertGenresError } = await supabase.from('manga_genres').insert(
           selectedGenres.map(genre_id => ({ manga_id: mangaId, genre_id }))
         )
+
+        if (insertGenresError) throw new Error(`Error guardando géneros: ${insertGenresError.message}`)
       }
 
 
       // Actualizar categorías
-      await supabase.from('manga_categories').delete().eq('manga_id', mangaId)
+      const { error: deleteCategoriesError } = await supabase
+        .from('manga_categories')
+        .delete()
+        .eq('manga_id', mangaId)
+
+      if (deleteCategoriesError) throw new Error(`Error eliminando categorías anteriores: ${deleteCategoriesError.message}`)
+
       if (selectedCategories.length > 0) {
-        await supabase.from('manga_categories').insert(
+        const { error: insertCategoriesError } = await supabase.from('manga_categories').insert(
           selectedCategories.map(category_id => ({ manga_id: mangaId, category_id }))
         )
+
+        if (insertCategoriesError) throw new Error(`Error guardando categorías: ${insertCategoriesError.message}`)
+      }
+
+      const affectedTagIds = new Set([...activeTags, ...selectedTags])
+      const affectedTagSlugs = allTags
+        .filter(tag => affectedTagIds.has(tag.id))
+        .map(tag => tag.slug)
+
+      const cacheResponse = await fetch('/api/admin/revalidate-manga', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          slug: form.slug.trim(),
+          previousSlug,
+          tagSlugs: affectedTagSlugs,
+        }),
+      })
+
+      if (!cacheResponse.ok) {
+        console.error('El manga se actualizó, pero no se pudo invalidar el caché.')
       }
 
       setSuccess(true)
-      router.refresh()
+
+      if (previousSlug !== form.slug.trim()) {
+        router.replace(`/admin/mangas/${form.slug.trim()}`)
+      } else {
+        router.refresh()
+      }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconocido')
@@ -208,8 +256,8 @@ export function EditMangaForm({
   </label>
   <input
     type="text"
-    value={form.autor}
-    onChange={e => setForm(f => ({ ...f, autor: e.target.value }))}
+    value={form.author}
+    onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
     placeholder="Nombre del autor"
     className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-red-500/50 transition-colors"
   />

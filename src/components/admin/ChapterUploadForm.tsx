@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -15,92 +15,224 @@ interface ChapterUploadFormProps {
   defaultMangaSlug: string
 }
 
-export function ChapterUploadForm({ mangas, defaultMangaSlug }: ChapterUploadFormProps) {
+const ALLOWED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+])
+
+const MAX_PAGE_SIZE = 15 * 1024 * 1024
+
+function getSafeExtension(file: File): string {
+  const extensionByType: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/avif': 'avif',
+  }
+
+  return extensionByType[file.type] ?? 'webp'
+}
+
+export function ChapterUploadForm({
+  mangas,
+  defaultMangaSlug,
+}: ChapterUploadFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [pages, setPages] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
+  const previewsRef = useRef<string[]>([])
   const [uploadProgress, setUploadProgress] = useState(0)
-
   const [form, setForm] = useState({
-    mangaSlug:     defaultMangaSlug,
+    mangaSlug: defaultMangaSlug,
     chapterNumber: '',
-    chapterTitle:  '',
+    chapterTitle: '',
   })
 
-  function handlePagesChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-    // Ordenar por nombre de archivo
-    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+  useEffect(() => () => {
+    previewsRef.current.forEach((preview) => URL.revokeObjectURL(preview))
+  }, [])
+
+  function handlePagesChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+      .sort((first, second) =>
+        first.name.localeCompare(second.name, undefined, { numeric: true })
+      )
+
+    const invalidType = files.find((file) => !ALLOWED_IMAGE_TYPES.has(file.type))
+    if (invalidType) {
+      setError(`${invalidType.name} no es JPG, PNG, WEBP ni AVIF.`)
+      event.target.value = ''
+      return
+    }
+
+    const oversizedFile = files.find((file) => file.size > MAX_PAGE_SIZE)
+    if (oversizedFile) {
+      setError(`${oversizedFile.name} supera el máximo de 15 MB.`)
+      event.target.value = ''
+      return
+    }
+
+    previewsRef.current.forEach((preview) => URL.revokeObjectURL(preview))
+    const nextPreviews = files.map((file) => URL.createObjectURL(file))
+    previewsRef.current = nextPreviews
+    setError(null)
+    setSuccess(false)
     setPages(files)
-    setPreviews(files.map(f => URL.createObjectURL(f)))
+    setPreviews(nextPreviews)
   }
 
   function removePage(index: number) {
-    setPages(prev => prev.filter((_, i) => i !== index))
-    setPreviews(prev => prev.filter((_, i) => i !== index))
+    URL.revokeObjectURL(previews[index])
+    setPages((current) => current.filter((_, itemIndex) => itemIndex !== index))
+    setPreviews((current) => {
+      const nextPreviews = current.filter((_, itemIndex) => itemIndex !== index)
+      previewsRef.current = nextPreviews
+      return nextPreviews
+    })
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (pages.length === 0) { setError('Agrega al menos una página'); return }
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+
+    if (pages.length === 0) {
+      setError('Agrega al menos una página.')
+      return
+    }
+
+    const chapterNumber = Number.parseFloat(form.chapterNumber)
+    if (!Number.isFinite(chapterNumber) || chapterNumber < 0) {
+      setError('El número del capítulo no es válido.')
+      return
+    }
+
     setLoading(true)
+    setSuccess(false)
     setError(null)
+    setUploadProgress(0)
+
+    const uploadedPaths: string[] = []
 
     try {
       const supabase = createClient()
+      const selectedManga = mangas.find((manga) => manga.slug === form.mangaSlug)
 
-      // Obtener el manga seleccionado
-      const selectedManga = mangas.find(m => m.slug === form.mangaSlug)
-      if (!selectedManga) throw new Error('Selecciona un manga')
+      if (!selectedManga) {
+        throw new Error('Selecciona un manga.')
+      }
 
-      // Subir páginas a Storage
+      /* Evita sobrescribir un capítulo que ya existe. */
+      const { data: existingChapter, error: existingError } = await supabase
+        .from('chapters')
+        .select('id')
+        .eq('manga_id', selectedManga.id)
+        .eq('number', chapterNumber)
+        .maybeSingle()
+
+      if (existingError) {
+        throw new Error(`No se pudo comprobar el capítulo: ${existingError.message}`)
+      }
+
+      if (existingChapter) {
+        throw new Error(`El capítulo ${chapterNumber} ya existe en este manga.`)
+      }
+
       const pageUrls: string[] = []
+      const chapterPath = String(chapterNumber).replace('.', '-')
 
-      for (let i = 0; i < pages.length; i++) {
-        const file = pages[i]
-        const ext = file.name.split('.').pop()
-        const pageNum = String(i + 1).padStart(3, '0')
-        const path = `${form.mangaSlug}/cap-${form.chapterNumber}/${pageNum}.${ext}`
+      for (let index = 0; index < pages.length; index += 1) {
+        const file = pages[index]
+        const pageNumber = String(index + 1).padStart(3, '0')
+        const extension = getSafeExtension(file)
+        const path = `${selectedManga.slug}/cap-${chapterPath}/${pageNumber}.${extension}`
 
         const { error: uploadError } = await supabase.storage
           .from('manga-pages')
-          .upload(path, file, { upsert: true })
+          .upload(path, file, {
+            upsert: false,
+            contentType: file.type,
+            cacheControl: '31536000',
+          })
 
-        if (uploadError) throw new Error(`Error subiendo página ${i + 1}`)
+        if (uploadError) {
+          throw new Error(`Error subiendo la página ${index + 1}: ${uploadError.message}`)
+        }
+
+        uploadedPaths.push(path)
 
         const { data: urlData } = supabase.storage
           .from('manga-pages')
           .getPublicUrl(path)
 
         pageUrls.push(urlData.publicUrl)
-        setUploadProgress(Math.round(((i + 1) / pages.length) * 100))
+        setUploadProgress(Math.round(((index + 1) / pages.length) * 100))
       }
 
-      // Insertar capítulo en la DB
       const { error: insertError } = await supabase
         .from('chapters')
         .insert({
           manga_id: selectedManga.id,
-          number:   parseFloat(form.chapterNumber),
-          title:    form.chapterTitle || null,
-          pages:    pageUrls,
-          views:    0,
+          number: chapterNumber,
+          title: form.chapterTitle.trim() || null,
+          pages: pageUrls,
+          views: 0,
         })
 
-      if (insertError) throw new Error(insertError.message)
+      if (insertError) {
+        throw new Error(`No se pudo guardar el capítulo: ${insertError.message}`)
+      }
 
+      const cacheResponse = await fetch('/api/admin/revalidate-manga', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          slug: selectedManga.slug,
+        }),
+      })
+
+      if (!cacheResponse.ok) {
+        console.error('El capítulo se creó, pero no se pudo invalidar el caché.')
+      }
+
+      previews.forEach((preview) => URL.revokeObjectURL(preview))
+      previewsRef.current = []
       setSuccess(true)
       setPages([])
       setPreviews([])
       setUploadProgress(0)
-      setForm(f => ({ ...f, chapterNumber: '', chapterTitle: '' }))
+      setForm((current) => ({
+        ...current,
+        chapterNumber: '',
+        chapterTitle: '',
+      }))
       router.refresh()
+    } catch (caughtError) {
+      /*
+       * Si una página o la inserción falla, eliminamos únicamente
+       * los archivos nuevos subidos en este intento.
+       */
+      if (uploadedPaths.length > 0) {
+        const supabase = createClient()
+        const { error: cleanupError } = await supabase.storage
+          .from('manga-pages')
+          .remove(uploadedPaths)
 
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido')
+        if (cleanupError) {
+          console.error('No se pudieron limpiar las páginas incompletas:', cleanupError.message)
+        }
+      }
+
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Error desconocido.'
+      )
     } finally {
       setLoading(false)
     }
@@ -108,35 +240,34 @@ export function ChapterUploadForm({ mangas, defaultMangaSlug }: ChapterUploadFor
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-
       {success && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-3 text-sm text-emerald-400">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
           ✓ Capítulo subido correctamente
         </div>
       )}
 
-      {/* Manga */}
       <div>
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Manga *
         </label>
         <select
           required
           value={form.mangaSlug}
-          onChange={e => setForm(f => ({ ...f, mangaSlug: e.target.value }))}
-          className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500/50"
+          onChange={(event) => setForm((current) => ({ ...current, mangaSlug: event.target.value }))}
+          className="w-full rounded-lg border border-white/10 bg-[#111] px-4 py-2.5 text-sm text-white focus:border-red-500/50 focus:outline-none"
         >
           <option value="">Selecciona un manga...</option>
-          {mangas.map(m => (
-            <option key={m.id} value={m.slug}>{m.title}</option>
+          {mangas.map((manga) => (
+            <option key={manga.id} value={manga.slug}>
+              {manga.title}
+            </option>
           ))}
         </select>
       </div>
 
-      {/* Número y título */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Número *
           </label>
           <input
@@ -145,98 +276,70 @@ export function ChapterUploadForm({ mangas, defaultMangaSlug }: ChapterUploadFor
             min="0"
             step="0.1"
             value={form.chapterNumber}
-            onChange={e => setForm(f => ({ ...f, chapterNumber: e.target.value }))}
+            onChange={(event) => setForm((current) => ({ ...current, chapterNumber: event.target.value }))}
             placeholder="1"
-            className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500/50 transition-colors"
+            className="w-full rounded-lg border border-white/10 bg-[#111] px-4 py-2.5 text-sm text-white transition-colors focus:border-red-500/50 focus:outline-none"
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-500">
             Título (opcional)
           </label>
           <input
             type="text"
             value={form.chapterTitle}
-            onChange={e => setForm(f => ({ ...f, chapterTitle: e.target.value }))}
+            onChange={(event) => setForm((current) => ({ ...current, chapterTitle: event.target.value }))}
             placeholder="El comienzo..."
-            className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-red-500/50 transition-colors"
+            className="w-full rounded-lg border border-white/10 bg-[#111] px-4 py-2.5 text-sm text-white transition-colors placeholder:text-zinc-700 focus:border-red-500/50 focus:outline-none"
           />
         </div>
       </div>
 
-      {/* Páginas */}
       <div>
-        <label className="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-500">
           Páginas * ({pages.length} seleccionadas)
         </label>
-        <label className="cursor-pointer flex flex-col items-center justify-center w-full h-32 bg-[#111] border-2 border-dashed border-white/10 hover:border-red-500/30 rounded-xl transition-colors">
-          <span className="text-zinc-500 text-sm mb-1">Haz clic para seleccionar las páginas</span>
-          <span className="text-zinc-700 text-xs">Selecciona todas las imágenes a la vez — se ordenan por nombre</span>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handlePagesChange}
-            className="hidden"
-          />
+        <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-white/10 bg-[#111] transition-colors hover:border-red-500/30">
+          <span className="mb-1 text-sm text-zinc-500">Haz clic para seleccionar las páginas</span>
+          <span className="text-xs text-zinc-700">Se ordenan por nombre · Máximo 15 MB por imagen</span>
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple onChange={handlePagesChange} className="hidden" />
         </label>
       </div>
 
-      {/* Previews */}
       {previews.length > 0 && (
         <div>
-          <p className="text-xs text-zinc-500 mb-3">{previews.length} páginas — haz clic en × para quitar</p>
-          <div className="grid grid-cols-6 gap-2 max-h-64 overflow-y-auto">
-            {previews.map((src, i) => (
-              <div key={i} className="relative group aspect-[2/3]">
-                <img
-                  src={src}
-                  alt={`Página ${i + 1}`}
-                  className="w-full h-full object-cover rounded-lg"
-                />
-                <span className="absolute bottom-1 left-1 text-[10px] bg-black/70 text-white px-1 rounded">
-                  {i + 1}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removePage(i)}
-                  className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs hidden group-hover:flex items-center justify-center"
-                >
-                  ×
-                </button>
+          <p className="mb-3 text-xs text-zinc-500">{previews.length} páginas — haz clic en × para quitar</p>
+          <div className="grid max-h-64 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-6">
+            {previews.map((source, index) => (
+              <div key={source} className="group relative aspect-[2/3]">
+                <img src={source} alt={`Página ${index + 1}`} className="h-full w-full rounded-lg object-cover" />
+                <span className="absolute bottom-1 left-1 rounded bg-black/70 px-1 text-[10px] text-white">{index + 1}</span>
+                <button type="button" onClick={() => removePage(index)} aria-label={`Quitar página ${index + 1}`} className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white group-hover:flex">×</button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Progress */}
       {loading && uploadProgress > 0 && (
         <div>
-          <div className="flex justify-between text-xs text-zinc-500 mb-1">
+          <div className="mb-1 flex justify-between text-xs text-zinc-500">
             <span>Subiendo páginas...</span>
             <span>{uploadProgress}%</span>
           </div>
-          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-red-500 transition-all duration-300"
-              style={{ width: `${uploadProgress}%` }}
-            />
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+            <div className="h-full bg-red-500 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
           </div>
         </div>
       )}
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm text-red-400">
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={loading || !form.mangaSlug || !form.chapterNumber || pages.length === 0}
-        className="w-full py-3 bg-red-500 hover:bg-red-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors text-sm"
-      >
+      <button type="submit" disabled={loading || !form.mangaSlug || !form.chapterNumber || pages.length === 0} className="w-full rounded-lg bg-red-500 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-50">
         {loading ? `Subiendo... ${uploadProgress}%` : `Subir ${pages.length} páginas`}
       </button>
     </form>

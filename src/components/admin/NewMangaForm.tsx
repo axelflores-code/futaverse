@@ -18,7 +18,7 @@ export function NewMangaForm() {
     status:      'ongoing',
     rating:      'mature',
     score:       '0',
-    autor:      '', 
+    author: '',
   })
 
   function handleTitleChange(title: string) {
@@ -66,21 +66,91 @@ export function NewMangaForm() {
       }
 
       // Insertar manga
-      const { error: insertError } = await supabase
-        .from('mangas')
-        .insert({
-          title:       form.title,
-          slug:        form.slug,
-          description: form.description || null,
-          cover_url:   coverUrl,
-          status:      form.status,
-          rating:      form.rating,
-          score:       parseFloat(form.score),
-          views:       0,
-          autor:      form.autor || null,
-        })
+      const {
+  data: createdManga,
+  error: insertError,
+} = await supabase
+  .from('mangas')
+  .insert({
+    title:
+      form.title.trim(),
 
-      if (insertError) throw new Error(insertError.message)
+    slug:
+      form.slug.trim(),
+
+    description:
+      form.description.trim() ||
+      null,
+
+    cover_url:
+      coverUrl,
+
+    status:
+      form.status,
+
+    rating:
+      form.rating,
+
+    score:
+      Number.parseFloat(
+        form.score
+      ) || 0,
+
+    views:
+      0,
+
+    author:
+      form.author.trim() ||
+      null,
+  })
+  .select('id, slug')
+  .single()
+
+if (
+  insertError ||
+  !createdManga
+) {
+  throw new Error(
+    insertError?.message ??
+      'No se pudo crear el manga.'
+  )
+}
+
+/*
+ * El manga ya fue creado. Ahora pedimos al
+ * servidor que invalide todas las páginas.
+ */
+const cacheResponse =
+  await fetch(
+    '/api/admin/revalidate-manga',
+    {
+      method: 'POST',
+
+      headers: {
+        'Content-Type':
+          'application/json',
+      },
+
+      body: JSON.stringify({
+        slug:
+          createdManga.slug,
+
+        tagSlugs:
+          [],
+      }),
+    }
+  )
+
+if (!cacheResponse.ok) {
+  /*
+   * No lanzamos un error porque el manga ya
+   * existe. Así evitamos que el administrador
+   * vuelva a enviarlo y cree un duplicado.
+   */
+  console.error(
+    'El manga se creó, pero no se pudo invalidar el caché.'
+  )
+}
 
       router.push('/admin/mangas')
       router.refresh()
@@ -146,7 +216,7 @@ export function NewMangaForm() {
           className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-zinc-400 text-sm font-mono placeholder:text-zinc-700 focus:outline-none focus:border-red-500/50 transition-colors"
         />
         <p className="text-xs text-zinc-600 mt-1">
-          URL: futaverse.com/manga/{form.slug || 'slug'}
+          URL: mangafuta.com/manga/{form.slug || 'slug'}
         </p>
       </div>
 
@@ -204,9 +274,9 @@ export function NewMangaForm() {
   </label>
   <input
     type="text"
-    value={form.autor}
-    onChange={e => setForm(f => ({ ...f, autor: e.target.value }))}
-    placeholder="Nombre del autor"
+    value={form.author}
+    onChange={e => setForm(f => ({ ...f, author: e.target.value }))}
+    placeholder="Nombre del author"
     className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm placeholder:text-zinc-700 focus:outline-none focus:border-red-500/50 transition-colors"
   />
 </div>

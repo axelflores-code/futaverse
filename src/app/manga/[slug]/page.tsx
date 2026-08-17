@@ -1,46 +1,195 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { ChapterList } from '@/components/manga/ChapterList'
-import { MangaViewTracker } from '@/components/manga/MangaViewTracker'
-import { JsonLd } from '@/components/seo/JsonLd'
-import { formatNumber } from '@/lib/utils'
 import Image from 'next/image'
 import Link from 'next/link'
-import { MangaScore }     from '@/components/manga/MangaScore'
-import { MangaPageGallery } from '@/components/manga/MangaPageGallery'
+import { unstable_cache } from 'next/cache'
+import { notFound } from 'next/navigation'
+import { ChapterList } from '@/components/manga/ChapterList'
 import { FavoriteButton } from '@/components/manga/FavoriteButton'
+import { MangaPageGallery } from '@/components/manga/MangaPageGallery'
 import { MangaRelated } from '@/components/manga/MangaRelated'
+import { MangaScore } from '@/components/manga/MangaScore'
+import { MangaViewTracker } from '@/components/manga/MangaViewTracker'
+import { JsonLd } from '@/components/seo/JsonLd'
+import { createPublicClient } from '@/lib/supabase/public'
+import { formatNumber } from '@/lib/utils'
+
+export const revalidate = 900
 
 interface PageProps {
   params: Promise<{ slug: string }>
 }
 
-interface TagItem      { id: string; name: string; slug: string; namespace: string }
-interface GenreItem    { id: string; name: string; slug: string }
-interface CategoryItem { id: string; name: string; slug: string; color_hex: string | null }
-interface ChapterItem  {
-  id: string; manga_id: string; number: number
-  title: string | null; pages: string[]; views: number; created_at: string
+interface TagItem {
+  id: string
+  name: string
+  slug: string
+  namespace: string
 }
+
+interface GenreItem {
+  id: string
+  name: string
+  slug: string
+}
+
+interface CategoryItem {
+  id: string
+  name: string
+  slug: string
+  color_hex: string | null
+}
+
+interface ChapterItem {
+  id: string
+  manga_id: string
+  number: number
+  title: string | null
+  pages: string[] | null
+  views: number | string | null
+  created_at: string
+}
+
+interface MangaRow extends Record<string, unknown> {
+  id: string
+  slug: string
+  title: string
+  description: string | null
+  cover_url: string | null
+  score: number | string | null
+  views: number | string | null
+  author: string | null
+  created_at: string | null
+  updated_at: string | null
+  manga_genres?: Array<{ genres: GenreItem | null }>
+  manga_tags?: Array<{ tags: TagItem | null }>
+  manga_categories?: Array<{ categories: CategoryItem | null }>
+}
+
+interface MangaPageData {
+  manga: MangaRow
+  chapters: ChapterItem[]
+}
+
+const SITE_URL = 'https://mangafuta.com'
+
+const MANGA_SELECT = `
+  id,
+  slug,
+  title,
+  description,
+  cover_url,
+  score,
+  views,
+  author,
+  created_at,
+  updated_at,
+  manga_genres (
+    genres (id, name, slug)
+  ),
+  manga_tags (
+    tags (id, name, slug, namespace)
+  ),
+  manga_categories (
+    categories (id, name, slug, color_hex)
+  )
+`
+
+const CHAPTER_SELECT = `
+  id,
+  manga_id,
+  number,
+  title,
+  pages,
+  views,
+  created_at
+`
+
+const NS_LABELS: Record<string, string> = {
+  theme: 'Temas',
+  trope: 'Tropos',
+  setting: 'Ambientación',
+  format: 'Formato',
+  content_warning: '⚠ Advertencias',
+}
+
+function safeNumber(value: unknown): number {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function safeBigInt(value: unknown): bigint {
+  return BigInt(Math.max(0, Math.trunc(safeNumber(value))))
+}
+
+function cleanDescription(description: string | null, title: string): string {
+  const fallback = `Lee ${title} en español en MangaFuta.`
+  const text = description?.trim() || fallback
+  return text.length > 160 ? `${text.slice(0, 157).trimEnd()}…` : text
+}
+
+const getMangaPageData = unstable_cache(
+  async (slug: string): Promise<MangaPageData | null> => {
+    const supabase = createPublicClient()
+
+    const { data: mangaRaw, error: mangaError } = await supabase
+      .from('mangas')
+      .select(MANGA_SELECT)
+      .eq('slug', slug)
+      .neq('status', 'draft')
+      .maybeSingle()
+
+    if (mangaError) {
+      throw new Error(`Error cargando el manga: ${mangaError.message}`)
+    }
+
+    if (!mangaRaw) return null
+
+    const manga = mangaRaw as unknown as MangaRow
+
+    const { data: chaptersRaw, error: chaptersError } = await supabase
+      .from('chapters')
+      .select(CHAPTER_SELECT)
+      .eq('manga_id', manga.id)
+      .order('number', { ascending: false })
+
+    if (chaptersError) {
+      throw new Error(`Error cargando capítulos: ${chaptersError.message}`)
+    }
+
+    return {
+      manga,
+      chapters: (chaptersRaw ?? []) as unknown as ChapterItem[],
+    }
+  },
+  ['mangafuta-manga-detail-v3'],
+  {
+    revalidate: 900,
+    tags: ['mangafuta-mangas'],
+  }
+)
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const supabase  = await createClient()
-  const { data: manga } = await supabase
-    .from('mangas')
-    .select('title, description, cover_url')
-    .eq('slug', slug)
-    .single()
+  const result = await getMangaPageData(slug)
 
-  if (!manga) return { title: 'Manga no encontrado' }
+  if (!result) {
+    return {
+      title: 'Manga no encontrado',
+      robots: { index: false, follow: false },
+    }
+  }
 
-  const title = manga.title
-  const description = manga.description ?? `Lee ${title} en MangaFuta. Manga futanari en español gratis.`
+  const { manga } = result
+  const canonical = `${SITE_URL}/manga/${manga.slug}`
+  const description = cleanDescription(manga.description, manga.title)
+  const images = manga.cover_url
+    ? [{ url: manga.cover_url, alt: manga.title }]
+    : []
 
   return {
-    title,
+    title: manga.title,
     description,
+    alternates: { canonical },
     robots: {
       index: true,
       follow: true,
@@ -51,21 +200,18 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         'max-snippet': -1,
       },
     },
-    alternates: {
-      canonical: `https://mangafuta.com/manga/${slug}`,
-    },
     openGraph: {
-      title,
+      title: manga.title,
       description,
       type: 'book',
-      url: `https://mangafuta.com/manga/${slug}`,
+      url: canonical,
       siteName: 'MangaFuta',
       locale: 'es_ES',
-      images: manga.cover_url ? [{ url: manga.cover_url, alt: title }] : [],
+      images,
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: manga.title,
       description,
       images: manga.cover_url ? [manga.cover_url] : [],
     },
@@ -74,210 +220,170 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function MangaDetailPage({ params }: PageProps) {
   const { slug } = await params
-  const supabase  = await createClient()
+  const result = await getMangaPageData(slug)
 
-  const { data: manga } = await supabase
-    .from('mangas')
-    .select(`
-      *,
-      manga_genres     ( genres      ( id, name, slug ) ),
-      manga_tags       ( tags        ( id, name, slug, namespace ) ),
-      manga_categories ( categories  ( id, name, slug, color_hex ) )
-    `)
-    .eq('slug', slug)
-    .single()
+  if (!result) notFound()
 
-  if (!manga) notFound()
+  const { manga, chapters } = result
 
-  const { data: chaptersRaw } = await supabase
-    .from('chapters')
-    .select('*')
-    .eq('manga_id', manga.id)
-    .order('number', { ascending: false })
+  const genres = (manga.manga_genres ?? [])
+    .map((relation) => relation.genres)
+    .filter((genre): genre is GenreItem => Boolean(genre))
 
-  const genres: GenreItem[] = ((manga.manga_genres ?? []) as Array<{ genres: GenreItem }>)
-    .map(mg => mg.genres).filter(Boolean)
+  const tags = (manga.manga_tags ?? [])
+    .map((relation) => relation.tags)
+    .filter((tag): tag is TagItem => Boolean(tag))
 
-  const tags: TagItem[] = ((manga.manga_tags ?? []) as Array<{ tags: TagItem }>)
-    .map(mt => mt.tags).filter(Boolean)
+  const categories = (manga.manga_categories ?? [])
+    .map((relation) => relation.categories)
+    .filter((category): category is CategoryItem => Boolean(category))
 
-  const categories: CategoryItem[] = ((manga.manga_categories ?? []) as Array<{ categories: CategoryItem }>)
-    .map(mc => mc.categories).filter(Boolean)
+  const tagsByNamespace = tags.reduce<Record<string, TagItem[]>>(
+    (groups, tag) => {
+      ;(groups[tag.namespace] ??= []).push(tag)
+      return groups
+    },
+    {}
+  )
 
-  const chapters = (chaptersRaw ?? []) as ChapterItem[]
+  const mappedChapters = chapters.map((chapter) => ({
+    id: chapter.id,
+    mangaId: chapter.manga_id,
+    number: safeNumber(chapter.number),
+    title: chapter.title,
+    pages: chapter.pages ?? [],
+    views: safeBigInt(chapter.views),
+    createdAt: chapter.created_at,
+  }))
 
-  const tagsByNs = tags.reduce((acc: Record<string, TagItem[]>, tag: TagItem) => {
-    if (!acc[tag.namespace]) acc[tag.namespace] = []
-    acc[tag.namespace].push(tag)
-    return acc
-  }, {} as Record<string, TagItem[]>)
-
-  const STATUS_LABEL: Record<string, string> = {
-    ongoing: 'En curso', completed: 'Completo', hiatus: 'Pausado',
-  }
-  const STATUS_COLOR: Record<string, string> = {
-    ongoing:   'bg-green-500/10 text-green-400',
-    completed: 'bg-blue-500/10 text-blue-400',
-    hiatus:    'bg-yellow-500/10 text-yellow-400',
-  }
-  const NS_LABELS: Record<string, string> = {
-    theme:           'Temas',
-    trope:           'Tropos',
-    setting:         'Ambientación',
-    format:          'Formato',
-    content_warning: '⚠ Advertencias',
-  }
+  const score = safeNumber(manga.score)
+  const canonical = `${SITE_URL}/manga/${manga.slug}`
 
   return (
     <>
-    <MangaViewTracker mangaId={manga.id} />
+      <MangaViewTracker mangaId={manga.id} />
+
       <JsonLd
-  type="Book"
-  data={{
-    '@id':
-      `https://mangafuta.com/manga/${manga.slug}#book`,
+        type="Book"
+        data={{
+          '@id': `${canonical}#book`,
+          url: canonical,
+          name: manga.title,
+          description: manga.description ?? `Lee ${manga.title} en español en MangaFuta.`,
+          image: manga.cover_url ? [manga.cover_url] : undefined,
+          inLanguage: 'es',
+          contentRating: '18+',
+          isFamilyFriendly: false,
+          author: manga.author
+            ? { '@type': 'Person', name: manga.author }
+            : undefined,
+          genre: genres.map((genre) => genre.name),
+          datePublished: manga.created_at ?? undefined,
+          dateModified: manga.updated_at ?? undefined,
+          publisher: {
+            '@type': 'Organization',
+            name: 'MangaFuta',
+            url: SITE_URL,
+          },
+        }}
+      />
 
-    url:
-      `https://mangafuta.com/manga/${manga.slug}`,
-
-    name: manga.title,
-
-    description:
-      manga.description ??
-      `Lee ${manga.title} en español en MangaFuta.`,
-
-    image: manga.cover_url
-      ? [manga.cover_url]
-      : undefined,
-
-    inLanguage: 'es',
-
-    contentRating: '18+',
-
-    isFamilyFriendly: false,
-
-    author: manga.author
-      ? {
-          '@type': 'Person',
-          name: manga.author,
-        }
-      : undefined,
-
-    genre: genres.map(
-      (genre) => genre.name
-    ),
-
-    datePublished:
-      manga.created_at ?? undefined,
-
-    dateModified:
-      manga.updated_at ?? undefined,
-
-    publisher: {
-      '@type': 'Organization',
-      name: 'MangaFuta',
-      url: 'https://mangafuta.com',
-    },
-  }}
-/>
-
-      <div className="max-w-7xl mx-auto px-4 py-8">
-
-        <Link href="/manga" className="text-xs text-zinc-600 hover:text-zinc-400 flex items-center gap-1 mb-6 transition-colors w-fit">
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <Link
+          href="/manga"
+          className="mb-6 flex w-fit items-center gap-1 text-sm text-zinc-500 transition-colors hover:text-zinc-300"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           Volver al catálogo
         </Link>
 
-        <div className="flex flex-col md:flex-row gap-8 mb-10">
-
-          {/* Portada */}
+        <div className="mb-10 flex flex-col gap-8 md:flex-row">
           <div className="flex-shrink-0">
-            <div className="w-48 md:w-56 aspect-[2/3] bg-[#1a1a1a] rounded-xl overflow-hidden shadow-2xl">
+            <div className="aspect-[2/3] w-48 overflow-hidden rounded-xl bg-[#1a1a1a] shadow-2xl md:w-56">
               {manga.cover_url ? (
                 <Image
                   src={manga.cover_url}
-                  alt={manga.title}
+                  alt={`Portada de ${manga.title}`}
                   width={224}
                   height={336}
-                  className="w-full h-full object-cover"
+                  sizes="(max-width: 768px) 192px, 224px"
+                  className="h-full w-full object-cover"
                   priority
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-zinc-700 text-sm">
+                <div className="flex h-full w-full items-center justify-center text-sm text-zinc-700">
                   Sin portada
                 </div>
               )}
             </div>
           </div>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0">
-
-            {/* Categorías */}
+          <div className="min-w-0 flex-1">
             {categories.length > 0 && (
-              <div className="flex gap-2 flex-wrap mb-3">
-                {categories.map((cat: CategoryItem) => (
+              <div className="mb-3 flex flex-wrap gap-2">
+                {categories.map((category) => (
                   <span
-                    key={cat.id}
-                    className="text-xs px-2 py-0.5 rounded-full font-medium"
-                    style={cat.color_hex
-                      ? { background: cat.color_hex + '22', color: cat.color_hex, border: `1px solid ${cat.color_hex}44` }
-                      : { background: '#ffffff11', color: '#aaa' }
+                    key={category.id}
+                    className="rounded-full px-2.5 py-1 text-sm font-medium"
+                    style={
+                      category.color_hex
+                        ? {
+                            background: `${category.color_hex}22`,
+                            color: category.color_hex,
+                            border: `1px solid ${category.color_hex}44`,
+                          }
+                        : { background: '#ffffff11', color: '#aaa' }
                     }
                   >
-                    {cat.name}
+                    {category.name}
                   </span>
                 ))}
               </div>
             )}
 
-            <h1 className="text-3xl font-bold text-white mb-2 leading-tight">
+            <h1 className="mb-2 text-3xl font-bold leading-tight text-white md:text-4xl">
               {manga.title}
             </h1>
 
             {manga.author && (
-              <p className="text-sm text-zinc-400 mb-3">
+              <p className="mb-3 text-base text-zinc-400">
                 por <span className="text-white">{manga.author}</span>
               </p>
             )}
 
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_COLOR[manga.status] ?? ''}`}>
-                {STATUS_LABEL[manga.status] ?? manga.status}
-              </span>
-              {manga.score > 0 && (
-                <span className="text-xs text-yellow-400 flex items-center gap-1">
-                  ★ <span className="font-semibold">{manga.score.toFixed(1)}</span>
+            <div className="mb-5 flex flex-wrap items-center gap-4">
+              {score > 0 && (
+                <span className="flex items-center gap-1 text-sm text-yellow-400">
+                  ★ <span className="font-semibold">{score.toFixed(1)}</span>
                 </span>
               )}
-              <span className="text-xs text-zinc-600">
-                {formatNumber(manga.views)} vistas
+              <span className="text-sm text-zinc-500">
+                {formatNumber(safeBigInt(manga.views))} vistas
               </span>
             </div>
 
             {manga.description && (
-              <p className="text-sm text-zinc-400 leading-relaxed mb-5 max-w-2xl">
+              <p className="mb-6 max-w-2xl text-base leading-7 text-zinc-400">
                 {manga.description}
               </p>
             )}
 
-            {/* Tags por namespace */}
-            {Object.entries(tagsByNs).map(([ns, nsTags]: [string, TagItem[]]) => (
-              <div key={ns} className="mb-4">
-                <p className="text-xs font-semibold text-zinc-600 uppercase tracking-wider mb-2">
-                  {NS_LABELS[ns] ?? ns}
+            {Object.entries(tagsByNamespace).map(([namespace, namespaceTags]) => (
+              <div key={namespace} className="mb-4">
+                <p className="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+                  {NS_LABELS[namespace] ?? namespace}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {nsTags.map((tag: TagItem) => (
+                  {namespaceTags.map((tag) => (
                     <Link
                       key={tag.id}
                       href={`/tag/${tag.slug}`}
-                      className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                        ns === 'content_warning'
-                          ? 'border-yellow-500/30 text-yellow-600 hover:text-yellow-400 hover:border-yellow-500/50'
-                          : 'border-white/10 text-zinc-400 hover:text-white hover:border-white/20'
+                      className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                        namespace === 'content_warning'
+                          ? 'border-yellow-500/30 text-yellow-600 hover:border-yellow-500/50 hover:text-yellow-400'
+                          : 'border-white/10 text-zinc-400 hover:border-white/20 hover:text-white'
                       }`}
                     >
                       {tag.name}
@@ -289,63 +395,28 @@ export default async function MangaDetailPage({ params }: PageProps) {
           </div>
         </div>
 
-        {/* Puntuación */}
-        <div className="py-5 border-y border-white/5 my-5">
-          <MangaScore
-            mangaId={manga.id}
-            currentScore={manga.score}
-          />
+        <div className="my-5 border-y border-white/5 py-5">
+          <MangaScore mangaId={manga.id} currentScore={score} />
         </div>
 
-        {/* Capítulos */}
-        <section>
-          <h2 className="text-xl font-bold text-white mb-4">
-            Capítulos
-            <span className="text-sm font-normal text-zinc-600 ml-2">
-              ({chapters.length})
-            </span>
-          </h2>
-          <ChapterList
-            chapters={chapters.map((c: ChapterItem) => ({
-              id:        c.id,
-              mangaId:   c.manga_id,
-              number:    c.number,
-              title:     c.title,
-              pages:     c.pages,
-              views:     BigInt(c.views),
-              createdAt: c.created_at,
-            }))}
-            mangaSlug={slug}
-          />
-        </section>
-
-        {/* Botón favorito */}
         <div className="mb-5">
           <FavoriteButton mangaId={manga.id} />
         </div>
 
-        {/* Galería de páginas */}
-        <MangaPageGallery
-          chapters={chapters.map((c: ChapterItem) => ({
-            id:        c.id,
-            mangaId:   c.manga_id,
-            number:    c.number,
-            title:     c.title,
-            pages:     c.pages,
-            views:     BigInt(c.views),
-            createdAt: c.created_at,
-          }))}
-          mangaSlug={slug}
-        />
-        
-        <MangaRelated
-  mangaId={manga.id}
-  mangaSlug={manga.slug}
-/>
+        <section>
+          <h2 className="mb-4 text-xl font-bold text-white">
+            Capítulos
+            <span className="ml-2 text-sm font-normal text-zinc-500">
+              ({mappedChapters.length})
+            </span>
+          </h2>
+          <ChapterList chapters={mappedChapters} mangaSlug={manga.slug} />
+        </section>
+
+        <MangaPageGallery chapters={mappedChapters} mangaSlug={manga.slug} />
+
+        <MangaRelated mangaId={manga.id} mangaSlug={manga.slug} />
       </div>
-      
     </>
-    
   )
 }
-
