@@ -124,14 +124,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   )
 
-  return [
-    {
-      url: BASE_URL,
-    },
-    {
-      url: `${BASE_URL}/manga`,
-    },
-    ...mangaUrls,
-    ...tagUrls,
-  ]
-}
+ return [
+  {
+    url: BASE_URL,
+  },
+  {
+    url: `${BASE_URL}/manga`,
+  },
+  {
+    url: `${BASE_URL}/tags`,
+  },
+  ...mangaUrls,
+  ...tagUrls,
+] }
