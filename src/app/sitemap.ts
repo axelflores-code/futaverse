@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next'
-import { createClient } from '@/lib/supabase/server'
+import { createPublicClient } from '@/lib/supabase/public'
 
 const BASE_URL = 'https://mangafuta.com'
 const BATCH_SIZE = 1000
@@ -20,7 +20,7 @@ interface TagRow {
 export const revalidate = 3600
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const supabase = await createClient()
+ const supabase = createPublicClient()
 
   async function getAllMangas(): Promise<MangaRow[]> {
     const results: MangaRow[] = []

@@ -1,18 +1,40 @@
 import type { Metadata } from 'next'
-import { cache } from 'react'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
+
+import { createPublicClient } from '@/lib/supabase/public'
 import { MangaCard } from '@/components/manga/MangaCard'
 import { Pagination } from '@/components/ui/Pagination'
-import Link from 'next/link'
+
 import type { Manga } from '@/types/manga'
 
+export const revalidate = 900
+
+const PAGE_SIZE = 24
+
+type SortValue =
+  | 'recent'
+  | 'oldest'
+  | 'popular'
+  | 'score'
+
 interface PageProps {
-  params: Promise<{ slug: string }>
+  params: Promise<{
+    slug: string
+  }>
+
   searchParams: Promise<{
     page?: string
     sort?: string
   }>
+}
+
+interface TagRow {
+  id: string
+  name: string
+  slug: string
+  namespace: string
 }
 
 interface MangaRow {
@@ -24,10 +46,11 @@ interface MangaRow {
   score: number
   rating: string
   description: string | null
-  views: number
+  views: number | string | null
   created_at: string
   updated_at: string
   author: string | null
+
   manga_genres: Array<{
     genres: {
       id: string
@@ -35,70 +58,322 @@ interface MangaRow {
       slug: string
     }
   }>
+
+  manga_tags?: Array<{
+    tag_id: string
+  }>
 }
 
-interface MangaTagRow {
-  manga_id: string
+interface TagMangasResult {
+  mangasRaw: MangaRow[]
+  total: number
 }
-
-const PAGE_SIZE = 24
 
 const NS_LABELS: Record<string, string> = {
   theme: 'Tema',
   trope: 'Tropo',
   setting: 'Ambientación',
   format: 'Formato',
-  content_warning: 'Advertencia de contenido',
+  content_warning:
+    'Advertencia de contenido',
 }
 
-const SORT_OPTIONS = [
-  { value: 'recent', label: 'Recientes' },
-  { value: 'oldest', label: 'Más antiguos' },
-  { value: 'popular', label: 'Populares' },
-  { value: 'score', label: 'Mejor score' },
+const SORT_OPTIONS: Array<{
+  value: SortValue
+  label: string
+}> = [
+  {
+    value: 'recent',
+    label: 'Recientes',
+  },
+  {
+    value: 'oldest',
+    label: 'Más antiguos',
+  },
+  {
+    value: 'popular',
+    label: 'Populares',
+  },
+  {
+    value: 'score',
+    label: 'Mejor score',
+  },
 ]
 
-const VALID_SORTS = new Set([
-  'recent',
-  'oldest',
-  'popular',
-  'score',
-])
+const VALID_SORTS =
+  new Set<SortValue>([
+    'recent',
+    'oldest',
+    'popular',
+    'score',
+  ])
 
-const getTag = cache(async (slug: string) => {
-  const supabase = await createClient()
+function parsePage(
+  value?: string
+): number {
+  const parsed = Number.parseInt(
+    value ?? '1',
+    10
+  )
 
-  const { data: tag } = await supabase
-    .from('tags')
-    .select('id, name, slug, namespace')
-    .eq('slug', slug)
-    .maybeSingle()
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 1
+  ) {
+    return 1
+  }
 
-  return tag
-})
+  return parsed
+}
+
+function parseSort(
+  value?: string
+): SortValue {
+  if (
+    value &&
+    VALID_SORTS.has(
+      value as SortValue
+    )
+  ) {
+    return value as SortValue
+  }
+
+  return 'recent'
+}
+
+function mapManga(
+  manga: MangaRow
+): Manga {
+  return {
+    id: manga.id,
+    slug: manga.slug,
+    title: manga.title,
+    coverUrl: manga.cover_url,
+
+    status:
+      manga.status as Manga['status'],
+
+    score: manga.score,
+
+    rating:
+      manga.rating as Manga['rating'],
+
+    description:
+      manga.description,
+
+    views: BigInt(
+      manga.views ?? 0
+    ),
+
+    author: manga.author,
+    artist: null,
+    alternativeTitles: [],
+
+    genres:
+      (
+        manga.manga_genres ?? []
+      )
+        .map((item) => item.genres)
+        .filter(Boolean),
+
+    createdAt:
+      manga.created_at,
+
+    updatedAt:
+      manga.updated_at,
+  }
+}
+
+/*
+ * Guarda los datos del tag durante una hora.
+ * No utiliza cookies ni sesión.
+ */
+const getTag = unstable_cache(
+  async (
+    slug: string
+  ): Promise<TagRow | null> => {
+    const supabase =
+      createPublicClient()
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('tags')
+      .select(
+        'id, name, slug, namespace'
+      )
+      .eq('slug', slug)
+      .maybeSingle()
+
+    if (error) {
+      throw new Error(
+        `Error cargando el tag "${slug}": ${error.message}`
+      )
+    }
+
+    return (
+      data as TagRow | null
+    )
+  },
+  ['mangafuta-tag-v3'],
+  {
+    revalidate: 3600,
+    tags: ['mangafuta-tags'],
+  }
+)
+
+/*
+ * Consulta mangas directamente.
+ *
+ * Antes:
+ * 1. Descargaba hasta 1,000 IDs.
+ * 2. Enviaba todos dentro de .in().
+ * 3. Generaba una URL enorme.
+ *
+ * Ahora:
+ * mangas -> manga_tags -> tag_id
+ *
+ * La paginación y el orden se ejecutan
+ * dentro de Supabase.
+ */
+const getMangasByTag =
+  unstable_cache(
+    async (
+      tagId: string,
+      sort: SortValue,
+      currentPage: number
+    ): Promise<TagMangasResult> => {
+      const supabase =
+        createPublicClient()
+
+      const from =
+        (
+          currentPage - 1
+        ) * PAGE_SIZE
+
+      const to =
+        from +
+        PAGE_SIZE -
+        1
+
+      const orderColumn =
+        sort === 'popular'
+          ? 'views'
+          : sort === 'score'
+            ? 'score'
+            : sort === 'oldest'
+              ? 'created_at'
+              : 'updated_at'
+
+      const ascending =
+        sort === 'oldest'
+
+      const {
+        data,
+        count,
+        error,
+      } = await supabase
+        .from('mangas')
+        .select(
+          `
+            id,
+            slug,
+            title,
+            cover_url,
+            status,
+            score,
+            rating,
+            description,
+            views,
+            created_at,
+            updated_at,
+            author,
+
+            manga_genres (
+              genres (
+                id,
+                name,
+                slug
+              )
+            ),
+
+            manga_tags!inner (
+              tag_id
+            )
+          `,
+          {
+            count: 'exact',
+          }
+        )
+        .eq(
+          'manga_tags.tag_id',
+          tagId
+        )
+        .not(
+          'slug',
+          'is',
+          null
+        )
+        .order(
+          orderColumn,
+          {
+            ascending,
+          }
+        )
+        .range(from, to)
+
+      if (error) {
+        throw new Error(
+          `Error cargando mangas del tag: ${error.message}`
+        )
+      }
+
+      return {
+        mangasRaw:
+          (
+            data ?? []
+          ) as unknown as MangaRow[],
+
+        total:
+          count ?? 0,
+      }
+    },
+    [
+      'mangafuta-tag-mangas-v3',
+    ],
+    {
+      revalidate: 900,
+      tags: [
+        'mangafuta-tag-mangas',
+      ],
+    }
+  )
 
 export async function generateMetadata({
   params,
   searchParams,
 }: PageProps): Promise<Metadata> {
-  const { slug } = await params
+  const {
+    slug,
+  } = await params
+
   const {
     page: pageParam,
     sort: sortParam,
   } = await searchParams
 
-  const parsedPage = Number.parseInt(pageParam ?? '1', 10)
-
   const currentPage =
-    Number.isFinite(parsedPage) && parsedPage > 0
-      ? parsedPage
-      : 1
+    parsePage(pageParam)
 
-  const tag = await getTag(slug)
+  const tag =
+    await getTag(slug)
 
   if (!tag) {
     return {
-      title: 'Etiqueta no encontrada',
+      title:
+        'Etiqueta no encontrada',
+
       robots: {
         index: false,
         follow: false,
@@ -106,7 +381,8 @@ export async function generateMetadata({
     }
   }
 
-  const basePath = `/tag/${tag.slug}`
+  const basePath =
+    `/tag/${tag.slug}`
 
   const canonical =
     currentPage > 1
@@ -123,14 +399,14 @@ export async function generateMetadata({
 
   const description =
     `Lee mangas con la etiqueta ${tag.name} en español. ` +
-    `Explora títulos y capítulos disponibles gratis en MangaFuta.`
+    'Explora títulos y capítulos disponibles gratis en MangaFuta.'
 
   /*
-   * Las variantes con ?sort=popular, ?sort=score, etc.
-   * son páginas duplicadas. Google puede seguir sus enlaces,
-   * pero no debe indexarlas individualmente.
+   * Los órdenes alternativos son
+   * duplicados del mismo contenido.
    */
-  const shouldIndex = !sortParam
+  const shouldIndex =
+    !sortParam
 
   return {
     title,
@@ -143,10 +419,12 @@ export async function generateMetadata({
     robots: {
       index: shouldIndex,
       follow: true,
+
       googleBot: {
         index: shouldIndex,
         follow: true,
-        'max-image-preview': 'large',
+        'max-image-preview':
+          'large',
         'max-snippet': -1,
       },
     },
@@ -158,21 +436,26 @@ export async function generateMetadata({
       title,
       description,
       url: canonical,
+
       images: [
         {
           url: '/og-image.jpg',
           width: 1200,
           height: 630,
-          alt: `Mangas de ${tag.name} en MangaFuta`,
+          alt:
+            `Mangas de ${tag.name} en MangaFuta`,
         },
       ],
     },
 
     twitter: {
-      card: 'summary_large_image',
+      card:
+        'summary_large_image',
       title,
       description,
-      images: ['/og-image.jpg'],
+      images: [
+        '/og-image.jpg',
+      ],
     },
   }
 }
@@ -181,122 +464,75 @@ export default async function TagPage({
   params,
   searchParams,
 }: PageProps) {
-  const { slug } = await params
+  const {
+    slug,
+  } = await params
 
   const {
     page: pageParam,
     sort: sortParam,
   } = await searchParams
 
-  const parsedPage = Number.parseInt(pageParam ?? '1', 10)
-
   const currentPage =
-    Number.isFinite(parsedPage) && parsedPage > 0
-      ? parsedPage
-      : 1
+    parsePage(pageParam)
 
   const sort =
-    sortParam && VALID_SORTS.has(sortParam)
-      ? sortParam
-      : 'recent'
+    parseSort(sortParam)
 
-  const from = (currentPage - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
-
-  const supabase = await createClient()
-  const tag = await getTag(slug)
+  const tag =
+    await getTag(slug)
 
   if (!tag) {
     notFound()
   }
 
-  const orderCol =
-    sort === 'popular'
-      ? 'views'
-      : sort === 'score'
-        ? 'score'
-        : sort === 'oldest'
-          ? 'created_at'
-          : 'updated_at'
-
-  const ascending = sort === 'oldest'
-
   const {
-    data: mangaTagIds,
-    count,
-  } = await supabase
-    .from('manga_tags')
-    .select('manga_id', { count: 'exact' })
-    .eq('tag_id', tag.id)
+    mangasRaw,
+    total,
+  } = await getMangasByTag(
+    tag.id,
+    sort,
+    currentPage
+  )
 
-  const total = count ?? 0
-  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const totalPages =
+    Math.ceil(
+      total / PAGE_SIZE
+    )
+
+  /*
+   * No dejamos indexar páginas
+   * vacías como ocurrió con Futanari.
+   */
+  if (total === 0) {
+    notFound()
+  }
 
   if (
     currentPage > 1 &&
-    (totalPages === 0 || currentPage > totalPages)
+    currentPage > totalPages
   ) {
     notFound()
   }
 
-  const ids = (
-    (mangaTagIds ?? []) as MangaTagRow[]
-  ).map((item) => item.manga_id)
+  const mangas =
+    mangasRaw.map(mapManga)
 
-  let mangas: Manga[] = []
+  const paginationParams:
+    Record<string, string> = {}
 
-  if (ids.length > 0) {
-    const { data: mangasRaw } = await supabase
-      .from('mangas')
-      .select(
-        '*, manga_genres(genres(id, name, slug))'
-      )
-      .in('id', ids)
-      .order(orderCol, { ascending })
-      .range(from, to)
-
-    mangas = (
-      (mangasRaw ?? []) as MangaRow[]
-    ).map((manga) => ({
-      id: manga.id,
-      slug: manga.slug,
-      title: manga.title,
-      coverUrl: manga.cover_url,
-      status: manga.status as Manga['status'],
-      score: manga.score,
-      rating: manga.rating as Manga['rating'],
-      description: manga.description,
-      views: BigInt(manga.views),
-      author: manga.author,
-      artist: null,
-      alternativeTitles: [],
-      genres: (manga.manga_genres ?? []).map(
-        (item) => item.genres
-      ),
-      createdAt: manga.created_at,
-      updatedAt: manga.updated_at,
-    }))
+  if (sort !== 'recent') {
+    paginationParams.sort =
+      sort
   }
 
   return (
-    <div
-      style={{
-        maxWidth: '1280px',
-        margin: '0 auto',
-        padding: '32px 16px',
-      }}
+    <main
+      className="tag-page"
     >
       <Link
         href="/manga"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px',
-          fontSize: '13px',
-          color: 'rgba(96,88,80,1)',
-          textDecoration: 'none',
-          marginBottom: '20px',
-        }}
+        className="tag-back-link"
       >
         <svg
           width="12"
@@ -305,6 +541,7 @@ export default async function TagPage({
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={2}
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -316,176 +553,283 @@ export default async function TagPage({
         Catálogo
       </Link>
 
-      <div style={{ marginBottom: '24px' }}>
-        <p
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '.08em',
-            color: '#3D5A9E',
-            marginBottom: '6px',
-          }}
-        >
-          {NS_LABELS[tag.namespace] ?? tag.namespace}
+      <header className="tag-header">
+        <p className="tag-namespace">
+          {
+            NS_LABELS[
+              tag.namespace
+            ] ??
+            tag.namespace
+          }
         </p>
 
-        <h1
-          style={{
-            fontSize: '28px',
-            fontWeight: 800,
-            color: '#f0ece8',
-            marginBottom: '6px',
-          }}
-        >
+        <h1>
           {tag.name}
         </h1>
 
-        <p
-          style={{
-            fontSize: '13px',
-            color: 'rgba(160,152,144,0.5)',
-          }}
-        >
-          {total.toLocaleString()} manga
-          {total !== 1 ? 's' : ''}
+        <p className="tag-total">
+          {total.toLocaleString()}{' '}
+          manga
+          {total !== 1
+            ? 's'
+            : ''}
         </p>
-      </div>
+      </header>
 
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          flexWrap: 'wrap',
-          marginBottom: '24px',
-          padding: '12px 16px',
-          background: 'rgba(255,255,255,0.02)',
-          borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.05)',
-        }}
+      <nav
+        aria-label="Ordenar mangas"
+        className="tag-sort"
       >
-        <span
-          style={{
-            fontSize: '11px',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '.06em',
-            color: 'rgba(96,88,80,1)',
-            marginRight: '4px',
-          }}
-        >
+        <span className="tag-sort-label">
           Ordenar:
         </span>
 
-        {SORT_OPTIONS.map((option) => (
-          <Link
-            key={option.value}
-            href={`/tag/${slug}?sort=${option.value}`}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '20px',
-              fontSize: '13px',
-              fontWeight:
-                sort === option.value ? 600 : 400,
-              textDecoration: 'none',
-              transition: 'all .15s',
+        {SORT_OPTIONS.map(
+          (option) => {
+            const active =
+              sort ===
+              option.value
 
-              background:
-                sort === option.value
-                  ? option.value === 'popular'
-                    ? '#3D5A9E'
-                    : '#C4956A'
-                  : 'rgba(255,255,255,0.04)',
+            const href =
+              option.value ===
+              'recent'
+                ? `/tag/${tag.slug}`
+                : `/tag/${tag.slug}?sort=${option.value}`
 
-              border: `1px solid ${
-                sort === option.value
-                  ? option.value === 'popular'
-                    ? '#3D5A9E'
-                    : '#C4956A'
-                  : 'rgba(255,255,255,0.08)'
-              }`,
+            return (
+              <Link
+                key={option.value}
+                href={href}
+                className={[
+                  'tag-sort-option',
 
-              color:
-                sort === option.value
-                  ? '#0c0c12'
-                  : 'rgba(175,167,158,1)',
-            }}
-          >
-            {option.label}
-          </Link>
-        ))}
-      </div>
+                  active
+                    ? 'active'
+                    : '',
 
-      {mangas.length === 0 ? (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '60px 0',
-            color: 'rgba(160,152,144,0.4)',
-            fontSize: '14px',
-          }}
-        >
-          No hay mangas con el tag &quot;{tag.name}&quot;
-          todavía.
+                  option.value ===
+                  'popular'
+                    ? 'popular'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                {option.label}
+              </Link>
+            )
+          }
+        )}
+      </nav>
+
+      <section
+        aria-label={
+          `Mangas con el tag ${tag.name}`
+        }
+        className="tag-page-grid"
+      >
+        {mangas.map(
+          (
+            manga,
+            index
+          ) => (
+            <MangaCard
+              key={manga.id}
+              manga={manga}
+              priority={
+                index < 6
+              }
+            />
+          )
+        )}
+      </section>
+
+      {totalPages > 1 && (
+        <div className="tag-pagination">
+          <Pagination
+            currentPage={
+              currentPage
+            }
+            totalPages={
+              totalPages
+            }
+            basePath={
+              `/tag/${tag.slug}`
+            }
+            searchParams={
+              paginationParams
+            }
+          />
         </div>
-      ) : (
-        <>
-          <div
-            className="tag-page-grid"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(6, 1fr)',
-              gap: '10px',
-              marginBottom: '40px',
-            }}
-          >
-            {mangas.map((manga, index) => (
-              <MangaCard
-                key={manga.id}
-                manga={manga}
-                priority={index < 6}
-              />
-            ))}
-          </div>
-
-          {totalPages > 1 && (
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'center',
-              }}
-            >
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                basePath={`/tag/${slug}`}
-                searchParams={{ sort }}
-              />
-            </div>
-          )}
-        </>
       )}
 
       <style>{`
+        .tag-page {
+          width: 100%;
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 32px 16px 56px;
+        }
+
+        .tag-back-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          margin-bottom: 20px;
+          color: rgba(150, 142, 134, 0.72);
+          font-size: 13px;
+          text-decoration: none;
+          transition: color 150ms ease;
+        }
+
+        .tag-back-link:hover {
+          color: #c4956a;
+        }
+
+        .tag-header {
+          margin-bottom: 24px;
+        }
+
+        .tag-namespace {
+          margin: 0 0 6px;
+          color: #7198df;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .tag-header h1 {
+          margin: 0 0 6px;
+          color: #f0ece8;
+          font-size: 28px;
+          font-weight: 800;
+          letter-spacing: -0.025em;
+        }
+
+        .tag-total {
+          margin: 0;
+          color: rgba(160, 152, 144, 0.58);
+          font-size: 13px;
+        }
+
+        .tag-sort {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-bottom: 24px;
+          padding: 12px 16px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.02);
+        }
+
+        .tag-sort-label {
+          margin-right: 4px;
+          color: rgba(150, 142, 134, 0.75);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+
+        .tag-sort-option {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 32px;
+          padding: 6px 14px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 20px;
+          background: rgba(255, 255, 255, 0.04);
+          color: rgba(190, 182, 174, 0.9);
+          font-size: 13px;
+          font-weight: 500;
+          text-decoration: none;
+          transition:
+            background 150ms ease,
+            border-color 150ms ease,
+            color 150ms ease;
+        }
+
+        .tag-sort-option:hover {
+          border-color: rgba(196, 149, 106, 0.42);
+          color: #ffffff;
+        }
+
+        .tag-sort-option.active {
+          border-color: #c4956a;
+          background: #c4956a;
+          color: #0c0c12;
+          font-weight: 700;
+        }
+
+        .tag-sort-option.popular.active {
+          border-color: #3d5a9e;
+          background: #3d5a9e;
+          color: #ffffff;
+        }
+
+        .tag-page-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(6, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 40px;
+        }
+
+        .tag-pagination {
+          display: flex;
+          justify-content: center;
+          margin-top: 12px;
+        }
+
         @media (max-width: 1024px) {
           .tag-page-grid {
-            grid-template-columns: repeat(4, 1fr) !important;
+            grid-template-columns:
+              repeat(4, minmax(0, 1fr));
           }
         }
 
         @media (max-width: 640px) {
+          .tag-page {
+            padding-top: 24px;
+          }
+
+          .tag-header h1 {
+            font-size: 25px;
+          }
+
+          .tag-sort {
+            gap: 7px;
+            padding: 12px;
+          }
+
+          .tag-sort-label {
+            width: 100%;
+            margin-bottom: 2px;
+          }
+
+          .tag-sort-option {
+            padding: 6px 12px;
+            font-size: 12px;
+          }
+
           .tag-page-grid {
-            grid-template-columns: repeat(3, 1fr) !important;
+            grid-template-columns:
+              repeat(3, minmax(0, 1fr));
           }
         }
 
         @media (max-width: 480px) {
           .tag-page-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
+            grid-template-columns:
+              repeat(2, minmax(0, 1fr));
+            gap: 10px;
           }
         }
       `}</style>
-    </div>
+    </main>
   )
 }

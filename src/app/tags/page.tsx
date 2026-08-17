@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { createPublicClient } from '@/lib/supabase/public'
 import { Pagination } from '@/components/ui/Pagination'
 import Link from 'next/link'
 
@@ -23,6 +24,73 @@ interface TagRow {
   slug: string
   usage_count: number
 }
+
+interface CachedTagsResult {
+  tags: TagRow[]
+  total: number
+}
+
+const getTagsPage = unstable_cache(
+  async (
+    sort: TagOrder,
+    currentPage: number
+  ): Promise<CachedTagsResult> => {
+    const from =
+      (currentPage - 1) * PAGE_SIZE
+
+    const to =
+      from + PAGE_SIZE - 1
+
+    const supabase =
+      createPublicClient()
+
+    let query = supabase
+      .from('tags')
+      .select(
+        'id, name, slug, usage_count',
+        {
+          count: 'exact',
+        }
+      )
+      .gte('usage_count', 2)
+
+    if (sort === 'popular') {
+      query = query
+        .order('usage_count', {
+          ascending: false,
+        })
+        .order('name', {
+          ascending: true,
+        })
+    } else {
+      query = query.order('name', {
+        ascending: true,
+      })
+    }
+
+    const {
+      data,
+      count,
+      error,
+    } = await query.range(from, to)
+
+    if (error) {
+      throw new Error(
+        `Error cargando tags: ${error.message}`
+      )
+    }
+
+    return {
+      tags: (data ?? []) as TagRow[],
+      total: count ?? 0,
+    }
+  },
+  ['mangafuta-tags-index-v1'],
+  {
+    revalidate: 3600,
+    tags: ['mangafuta-tags'],
+  }
+)
 
 function parsePage(value?: string): number {
   const parsed = Number.parseInt(value ?? '1', 10)
@@ -107,55 +175,13 @@ export default async function TagsPage({
   const currentPage = parsePage(params.page)
   const sort = parseSort(params.sort)
 
-  const from =
-    (currentPage - 1) * PAGE_SIZE
-
-  const to =
-    from + PAGE_SIZE - 1
-
-  const supabase = await createClient()
-
-  let query = supabase
-    .from('tags')
-    .select(
-      'id, name, slug, usage_count',
-      {
-        count: 'exact',
-      }
-    )
-    .gte('usage_count', 2)
-
-  if (sort === 'popular') {
-    query = query
-      .order('usage_count', {
-        ascending: false,
-      })
-      .order('name', {
-        ascending: true,
-      })
-  } else {
-    query = query.order('name', {
-      ascending: true,
-    })
-  }
-
   const {
-    data: tagsRaw,
-    count,
-    error,
-  } = await query.range(from, to)
-
-  if (error) {
-    console.error(
-      'Error cargando tags:',
-      error.message
-    )
-  }
-
-  const tags =
-    (tagsRaw ?? []) as TagRow[]
-
-  const total = count ?? 0
+  tags,
+  total,
+} = await getTagsPage(
+  sort,
+  currentPage
+)
 
   const totalPages =
     Math.ceil(total / PAGE_SIZE)
