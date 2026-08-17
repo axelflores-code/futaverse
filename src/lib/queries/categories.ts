@@ -1,18 +1,72 @@
-import { createClient } from '@/lib/supabase/server'
-import type { Category } from '@/types/manga'
+import {
+  unstable_cache,
+} from 'next/cache'
 
-export async function getAllCategories(): Promise<Category[]> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('categories')
-    .select('*')
-    .order('sort_order')
-  return (data ?? []).map(r => ({
-    id:          r.id,
-    name:        r.name,
-    slug:        r.slug,
-    description: r.description,
-    colorHex:    r.color_hex,
-    sortOrder:   r.sort_order,
-  }))
+import {
+  createPublicClient,
+} from '@/lib/supabase/public'
+
+import type {
+  Category,
+} from '@/types/manga'
+
+const getCachedCategories =
+  unstable_cache(
+    async (): Promise<
+      Category[]
+    > => {
+      const supabase =
+        createPublicClient()
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('categories')
+        .select(`
+          id,
+          name,
+          slug,
+          description,
+          color_hex,
+          sort_order
+        `)
+        .order('sort_order', {
+          ascending: true,
+        })
+
+      if (error) {
+        throw new Error(
+          `Error cargando categorías: ${error.message}`
+        )
+      }
+
+      return (
+        data ?? []
+      ).map((row) => ({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        description:
+          row.description,
+        colorHex:
+          row.color_hex,
+        sortOrder:
+          row.sort_order,
+      }))
+    },
+    [
+      'mangafuta-categories-v2',
+    ],
+    {
+      revalidate: 3600,
+      tags: [
+        'mangafuta-categories',
+      ],
+    }
+  )
+
+export async function getAllCategories():
+  Promise<Category[]> {
+  return getCachedCategories()
 }

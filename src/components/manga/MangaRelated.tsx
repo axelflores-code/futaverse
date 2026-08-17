@@ -1,141 +1,409 @@
-import { createClient } from '@/lib/supabase/server'
-import Image            from 'next/image'
-import Link             from 'next/link'
-import type { Manga }   from '@/types/manga'
+import {
+  unstable_cache,
+} from 'next/cache'
+
+import Image from 'next/image'
+import Link from 'next/link'
+
+import {
+  createPublicClient,
+} from '@/lib/supabase/public'
 
 interface MangaRelatedProps {
-  mangaId:   string
+  mangaId: string
   mangaSlug: string
 }
 
-interface MangaRow {
-  id: string; slug: string; title: string; cover_url: string | null
-  status: string; score: number; rating: string; description: string | null
-  views: number; created_at: string; updated_at: string; author: string | null
-  manga_genres: Array<{ genres: { id: string; name: string; slug: string } }>
+interface GenreRow {
+  id: string
+  name: string
+  slug: string
 }
 
-export async function MangaRelated({ mangaId, mangaSlug }: MangaRelatedProps) {
-  const supabase = await createClient()
+interface MangaRow {
+  id: string
+  slug: string
+  title: string
+  cover_url: string | null
+  status: string
+  score: number | null
+  rating: string
+  description: string | null
+  views: number | string | null
+  created_at: string
+  updated_at: string
+  author: string | null
 
-  // 1. Obtener tags del manga actual
-  const { data: currentTags } = await supabase
-    .from('manga_tags')
-    .select('tag_id')
-    .eq('manga_id', mangaId)
+  manga_genres: Array<{
+    genres: GenreRow
+  }>
+}
 
-  if (!currentTags || currentTags.length === 0) return null
+interface RelatedResult {
+  mangas: MangaRow[]
 
-  const tagIds = currentTags.map(t => t.tag_id)
+  sharedCounts:
+    Record<string, number>
+}
 
-  // 2. Buscar mangas que comparten esos tags (excluyendo el actual)
-  const { data: relatedTagData } = await supabase
-    .from('manga_tags')
-    .select('manga_id')
-    .in('tag_id', tagIds)
-    .neq('manga_id', mangaId)
+const getRelatedMangas =
+  unstable_cache(
+    async (
+      mangaId: string
+    ): Promise<RelatedResult> => {
+      const supabase =
+        createPublicClient()
 
-  if (!relatedTagData || relatedTagData.length === 0) return null
+      /*
+       * Tags del manga actual.
+       */
+      const {
+        data: currentTags,
+        error: currentTagsError,
+      } = await supabase
+        .from('manga_tags')
+        .select('tag_id')
+        .eq(
+          'manga_id',
+          mangaId
+        )
 
-  // 3. Contar coincidencias por manga — más tags en común = más relevante
-  const countMap: Record<string, number> = {}
-  relatedTagData.forEach(({ manga_id }) => {
-    countMap[manga_id] = (countMap[manga_id] ?? 0) + 1
-  })
+      if (currentTagsError) {
+        console.error(
+          'Error cargando tags para relacionados:',
+          currentTagsError.message
+        )
 
-  // 4. Ordenar por coincidencias y tomar los top 6
-  const topIds = Object.entries(countMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([id]) => id)
+        return {
+          mangas: [],
+          sharedCounts: {},
+        }
+      }
 
-  if (topIds.length === 0) return null
+      if (
+        !currentTags ||
+        currentTags.length === 0
+      ) {
+        return {
+          mangas: [],
+          sharedCounts: {},
+        }
+      }
 
-  // 5. Obtener datos completos de esos mangas
-  const { data: mangasRaw } = await supabase
-    .from('mangas')
-    .select('*, manga_genres(genres(id, name, slug))')
-    .in('id', topIds)
+      const tagIds =
+        currentTags.map(
+          (relation) =>
+            relation.tag_id
+        )
 
-  if (!mangasRaw || mangasRaw.length === 0) return null
+      /*
+       * Buscamos mangas que compartan
+       * cualquiera de esos tags.
+       */
+      const {
+        data: relatedRelations,
+        error: relationsError,
+      } = await supabase
+        .from('manga_tags')
+        .select('manga_id')
+        .in(
+          'tag_id',
+          tagIds
+        )
+        .neq(
+          'manga_id',
+          mangaId
+        )
+        .limit(5000)
 
-  // Ordenar según relevancia
-  const mangas = topIds
-    .map(id => mangasRaw.find(m => m.id === id))
-    .filter(Boolean) as MangaRow[]
+      if (relationsError) {
+        console.error(
+          'Error buscando mangas relacionados:',
+          relationsError.message
+        )
+
+        return {
+          mangas: [],
+          sharedCounts: {},
+        }
+      }
+
+      if (
+        !relatedRelations ||
+        relatedRelations.length === 0
+      ) {
+        return {
+          mangas: [],
+          sharedCounts: {},
+        }
+      }
+
+      /*
+       * Número de tags compartidos
+       * por cada manga.
+       */
+      const sharedCounts:
+        Record<string, number> = {}
+
+      for (
+        const relation of
+        relatedRelations
+      ) {
+        const relatedId =
+          relation.manga_id
+
+        sharedCounts[relatedId] =
+          (
+            sharedCounts[
+              relatedId
+            ] ?? 0
+          ) + 1
+      }
+
+      const topIds =
+        Object.entries(
+          sharedCounts
+        )
+          .sort(
+            (first, second) =>
+              second[1] -
+              first[1]
+          )
+          .slice(0, 6)
+          .map(
+            ([relatedId]) =>
+              relatedId
+          )
+
+      if (
+        topIds.length === 0
+      ) {
+        return {
+          mangas: [],
+          sharedCounts: {},
+        }
+      }
+
+      /*
+       * Esta lista siempre contiene
+       * como máximo seis IDs, por lo
+       * que .in() es seguro aquí.
+       */
+      const {
+        data: mangasRaw,
+        error: mangasError,
+      } = await supabase
+        .from('mangas')
+        .select(`
+          id,
+          slug,
+          title,
+          cover_url,
+          status,
+          score,
+          rating,
+          description,
+          views,
+          created_at,
+          updated_at,
+          author,
+
+          manga_genres (
+            genres (
+              id,
+              name,
+              slug
+            )
+          )
+        `)
+        .in(
+          'id',
+          topIds
+        )
+        .neq(
+          'status',
+          'draft'
+        )
+
+      if (mangasError) {
+        console.error(
+          'Error cargando mangas relacionados:',
+          mangasError.message
+        )
+
+        return {
+          mangas: [],
+          sharedCounts: {},
+        }
+      }
+
+      const unordered =
+        (
+          mangasRaw ?? []
+        ) as unknown as
+          MangaRow[]
+
+      /*
+       * Supabase no conserva el orden
+       * del array enviado a .in().
+       */
+      const mangas =
+        topIds
+          .map((relatedId) =>
+            unordered.find(
+              (manga) =>
+                manga.id ===
+                relatedId
+            )
+          )
+          .filter(
+            (
+              manga
+            ): manga is MangaRow =>
+              Boolean(manga)
+          )
+
+      return {
+        mangas,
+        sharedCounts,
+      }
+    },
+    [
+      'mangafuta-related-v2',
+    ],
+    {
+      revalidate: 3600,
+      tags: [
+        'mangafuta-related',
+      ],
+    }
+  )
+
+export async function MangaRelated({
+  mangaId,
+}: MangaRelatedProps) {
+  const {
+    mangas,
+    sharedCounts,
+  } = await getRelatedMangas(
+    mangaId
+  )
+
+  if (mangas.length === 0) {
+    return null
+  }
 
   return (
-    <section style={{ marginTop: '48px', paddingTop: '32px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+    <section className="related-section">
+      <header className="related-header">
+        <h2>
+          <span
+            aria-hidden="true"
+            className="related-accent"
+          />
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#f0ece8', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ width: '3px', height: '18px', borderRadius: '2px', background: '#3D5A9E', display: 'inline-block' }} />
           También te puede gustar
         </h2>
-      </div>
+      </header>
 
-      {/* Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px' }} className="related-grid">
+      <div className="related-grid">
         {mangas.map((manga) => {
-          const genres = (manga.manga_genres ?? []).map((mg: { genres: { id: string; name: string; slug: string } }) => mg.genres)
-          const sharedCount = countMap[manga.id] ?? 0
+          const genres =
+            (
+              manga.manga_genres ??
+              []
+            )
+              .map(
+                (relation) =>
+                  relation.genres
+              )
+              .filter(Boolean)
+
+          const sharedCount =
+            sharedCounts[
+              manga.id
+            ] ?? 0
 
           return (
             <Link
               key={manga.id}
-              href={`/manga/${manga.slug}`}
-              style={{ display: 'flex', flexDirection: 'column', borderRadius: '10px', overflow: 'hidden', background: '#111118', border: '1px solid rgba(255,255,255,0.06)', textDecoration: 'none', transition: 'all .2s' }}
+              href={
+                `/manga/${manga.slug}`
+              }
+              className="related-card"
             >
-              {/* Portada */}
-              <div style={{ position: 'relative', aspectRatio: '2/3', background: '#18181f', overflow: 'hidden' }}>
+              <div className="related-cover">
                 {manga.cover_url ? (
                   <Image
-                    src={manga.cover_url}
-                    alt={manga.title}
+                    src={
+                      manga.cover_url
+                    }
+                    alt={
+                      manga.title
+                    }
                     fill
-                    sizes="(max-width: 640px) 50vw, 16vw"
-                    style={{ objectFit: 'cover' }}
+                    sizes="
+                      (max-width: 480px) 50vw,
+                      (max-width: 640px) 33vw,
+                      (max-width: 1024px) 25vw,
+                      16vw
+                    "
+                    style={{
+                      objectFit:
+                        'cover',
+                    }}
                   />
                 ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.1)' }}>
-                    <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                  <div className="related-placeholder">
+                    <svg
+                      width="24"
+                      height="24"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1}
+                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                      />
                     </svg>
                   </div>
                 )}
 
-                {/* Badge estado */}
-                <span style={{
-                  position: 'absolute', top: '6px', left: '6px',
-                  fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-                  background: manga.status === 'ongoing' ? '#1D9E75' : manga.status === 'completed' ? '#3D5A9E' : '#C4956A',
-                  color: '#0c0c12',
-                }}>
-                  {manga.status === 'ongoing' ? 'En curso' : manga.status === 'completed' ? 'Completo' : 'Pausado'}
-                </span>
-
-                {/* Score */}
-                {manga.score > 0 && (
-                  <span style={{ position: 'absolute', bottom: '5px', right: '5px', fontSize: '10px', fontWeight: 700, padding: '2px 5px', borderRadius: '4px', background: 'rgba(10,10,15,0.85)', color: '#C4956A' }}>
-                    ★ {manga.score.toFixed(1)}
+                {Number(
+                  manga.score ?? 0
+                ) > 0 && (
+                  <span className="related-score">
+                    ★{' '}
+                    {Number(
+                      manga.score
+                    ).toFixed(1)}
                   </span>
                 )}
 
-                {/* Badge de tags en común */}
-                <span style={{ position: 'absolute', top: '6px', right: '6px', fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: 'rgba(61,90,158,0.85)', color: '#fff' }}>
-                  {sharedCount} en común
+                <span className="related-shared">
+                  {sharedCount}{' '}
+                  en común
                 </span>
               </div>
 
-              {/* Info */}
-              <div style={{ padding: '8px 10px' }}>
-                <p style={{ fontSize: '11px', fontWeight: 600, color: '#f0ece8', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+              <div className="related-info">
+                <p className="related-title">
                   {manga.title}
                 </p>
+
                 {genres.length > 0 && (
-                  <p style={{ fontSize: '10px', color: 'rgba(196,149,106,0.6)', marginTop: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {genres.slice(0, 2).map((g: { name: string }) => g.name).join(' · ')}
+                  <p className="related-genres">
+                    {genres
+                      .slice(0, 2)
+                      .map(
+                        (genre) =>
+                          genre.name
+                      )
+                      .join(' · ')}
                   </p>
                 )}
               </div>
@@ -145,11 +413,164 @@ export async function MangaRelated({ mangaId, mangaSlug }: MangaRelatedProps) {
       </div>
 
       <style>{`
-        .related-grid:hover > a { opacity: 0.7; }
-        .related-grid > a:hover { opacity: 1 !important; transform: scale(1.03); border-color: rgba(196,149,106,0.25) !important; }
-        @media (max-width: 1024px) { .related-grid { grid-template-columns: repeat(4, 1fr) !important; } }
-        @media (max-width: 640px)  { .related-grid { grid-template-columns: repeat(3, 1fr) !important; } }
-        @media (max-width: 480px)  { .related-grid { grid-template-columns: repeat(2, 1fr) !important; } }
+        .related-section {
+          margin-top: 48px;
+          padding-top: 32px;
+          border-top:
+            1px solid
+            rgba(255, 255, 255, 0.06);
+        }
+
+        .related-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+        }
+
+        .related-header h2 {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 0;
+          color: #f0ece8;
+          font-size: 16px;
+          font-weight: 700;
+        }
+
+        .related-accent {
+          display: inline-block;
+          width: 3px;
+          height: 18px;
+          border-radius: 2px;
+          background: #3d5a9e;
+        }
+
+        .related-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(6, minmax(0, 1fr));
+          gap: 10px;
+        }
+
+        .related-card {
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          border:
+            1px solid
+            rgba(255, 255, 255, 0.06);
+          border-radius: 10px;
+          background: #111118;
+          text-decoration: none;
+          transition:
+            opacity 200ms ease,
+            transform 200ms ease,
+            border-color 200ms ease;
+        }
+
+        .related-grid:hover
+        .related-card {
+          opacity: 0.72;
+        }
+
+        .related-grid
+        .related-card:hover {
+          opacity: 1;
+          border-color:
+            rgba(196, 149, 106, 0.25);
+          transform: translateY(-3px);
+        }
+
+        .related-cover {
+          position: relative;
+          overflow: hidden;
+          aspect-ratio: 2 / 3;
+          background: #18181f;
+        }
+
+        .related-placeholder {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+          color:
+            rgba(255, 255, 255, 0.1);
+        }
+
+        .related-score,
+        .related-shared {
+          position: absolute;
+          z-index: 2;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 9px;
+          font-weight: 700;
+        }
+
+        .related-score {
+          right: 5px;
+          bottom: 5px;
+          background:
+            rgba(10, 10, 15, 0.88);
+          color: #c4956a;
+        }
+
+        .related-shared {
+          top: 6px;
+          right: 6px;
+          background:
+            rgba(61, 90, 158, 0.9);
+          color: #ffffff;
+        }
+
+        .related-info {
+          padding: 8px 10px;
+        }
+
+        .related-title {
+          display: -webkit-box;
+          overflow: hidden;
+          margin: 0;
+          color: #f0ece8;
+          font-size: 11px;
+          font-weight: 600;
+          line-height: 1.4;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+        }
+
+        .related-genres {
+          overflow: hidden;
+          margin: 3px 0 0;
+          color:
+            rgba(196, 149, 106, 0.65);
+          font-size: 10px;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        @media (max-width: 1024px) {
+          .related-grid {
+            grid-template-columns:
+              repeat(4, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 640px) {
+          .related-grid {
+            grid-template-columns:
+              repeat(3, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 480px) {
+          .related-grid {
+            grid-template-columns:
+              repeat(2, minmax(0, 1fr));
+          }
+        }
       `}</style>
     </section>
   )
