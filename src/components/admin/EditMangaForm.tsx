@@ -47,6 +47,9 @@ export function EditMangaForm({
     title:       manga.title       as string,
     slug:        manga.slug        as string,
     description: manga.description as string ?? '',
+    seoTitle:    (manga.seo_title as string | null) ?? '',
+    seoDescription:
+      (manga.seo_description as string | null) ?? '',
     status:      manga.status      as string,
     rating:      manga.rating      as string,
     score:       String(manga.score),
@@ -105,11 +108,15 @@ export function EditMangaForm({
           title:       form.title.trim(),
           slug:        form.slug.trim(),
           description: form.description.trim() || null,
+          seo_title:   form.seoTitle.trim() || null,
+          seo_description:
+            form.seoDescription.trim() || null,
           cover_url:   coverUrl,
           status:      form.status,
           rating:      form.rating,
           score:       Number.parseFloat(form.score) || 0,
           author:      form.author.trim() || null,
+          updated_at:  new Date().toISOString(),
         })
         .eq('id', mangaId)
 
@@ -287,6 +294,55 @@ export function EditMangaForm({
           rows={4}
           className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-500/50 transition-colors resize-none"
         />
+      </div>
+
+      {/* SEO opcional */}
+      <div className="rounded-xl border border-[#3d5a9e]/25 bg-[#3d5a9e]/5 p-4">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-[#8aace8]">
+            SEO opcional
+          </h2>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            Déjalos vacíos para usar automáticamente el título y la descripción normales.
+            Estos campos no cambian el contenido visible del manga.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Título SEO
+            </label>
+            <input
+              type="text"
+              maxLength={65}
+              value={form.seoTitle}
+              onChange={e => setForm(f => ({ ...f, seoTitle: e.target.value }))}
+              placeholder="Usar título original automáticamente"
+              className="w-full rounded-lg border border-white/10 bg-[#111] px-4 py-2.5 text-sm text-white placeholder:text-zinc-700 focus:border-[#7198df]/50 focus:outline-none"
+            />
+            <p className="mt-1 text-right text-xs text-zinc-600">
+              {form.seoTitle.length}/65
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Metadescripción SEO
+            </label>
+            <textarea
+              maxLength={160}
+              rows={3}
+              value={form.seoDescription}
+              onChange={e => setForm(f => ({ ...f, seoDescription: e.target.value }))}
+              placeholder="Usar descripción normal automáticamente"
+              className="w-full resize-none rounded-lg border border-white/10 bg-[#111] px-4 py-2.5 text-sm text-white placeholder:text-zinc-700 focus:border-[#7198df]/50 focus:outline-none"
+            />
+            <p className="mt-1 text-right text-xs text-zinc-600">
+              {form.seoDescription.length}/160
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Estado y Rating */}

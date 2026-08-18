@@ -20,6 +20,14 @@ interface GenreRow {
   slug: string
 }
 
+interface TagRow {
+  id: string
+  name: string
+  slug: string
+  namespace: string
+  usage_count: number | string | null
+}
+
 interface MangaRow {
   id: string
   slug: string
@@ -44,6 +52,8 @@ interface RelatedResult {
 
   sharedCounts:
     Record<string, number>
+
+  commonTags: TagRow[]
 }
 
 const getRelatedMangas =
@@ -58,27 +68,37 @@ const getRelatedMangas =
        * Tags del manga actual.
        */
       const {
-        data: currentTags,
+        data: currentTagsRaw,
         error: currentTagsError,
       } = await supabase
         .from('manga_tags')
-        .select('tag_id')
+        .select(`
+          tag_id,
+          tags (
+            id,
+            name,
+            slug,
+            namespace,
+            usage_count
+          )
+        `)
         .eq(
           'manga_id',
           mangaId
         )
 
       if (currentTagsError) {
-        console.error(
-          'Error cargando tags para relacionados:',
-          currentTagsError.message
+        throw new Error(
+          `Error cargando tags para relacionados: ${currentTagsError.message}`
         )
-
-        return {
-          mangas: [],
-          sharedCounts: {},
-        }
       }
+
+      const currentTags = (
+        currentTagsRaw ?? []
+      ) as unknown as Array<{
+        tag_id: string
+        tags: TagRow | null
+      }>
 
       if (
         !currentTags ||
@@ -87,8 +107,19 @@ const getRelatedMangas =
         return {
           mangas: [],
           sharedCounts: {},
+          commonTags: [],
         }
       }
+
+      const commonTags = currentTags
+        .map((relation) => relation.tags)
+        .filter((tag): tag is TagRow => Boolean(tag))
+        .filter((tag) => tag.namespace !== 'content_warning')
+        .sort(
+          (first, second) =>
+            Number(second.usage_count ?? 0) -
+            Number(first.usage_count ?? 0)
+        )
 
       const tagIds =
         currentTags.map(
@@ -117,15 +148,9 @@ const getRelatedMangas =
         .limit(5000)
 
       if (relationsError) {
-        console.error(
-          'Error buscando mangas relacionados:',
-          relationsError.message
+        throw new Error(
+          `Error buscando mangas relacionados: ${relationsError.message}`
         )
-
-        return {
-          mangas: [],
-          sharedCounts: {},
-        }
       }
 
       if (
@@ -135,6 +160,7 @@ const getRelatedMangas =
         return {
           mangas: [],
           sharedCounts: {},
+          commonTags,
         }
       }
 
@@ -169,7 +195,7 @@ const getRelatedMangas =
               second[1] -
               first[1]
           )
-          .slice(0, 6)
+          .slice(0, 24)
           .map(
             ([relatedId]) =>
               relatedId
@@ -181,12 +207,13 @@ const getRelatedMangas =
         return {
           mangas: [],
           sharedCounts: {},
+          commonTags,
         }
       }
 
       /*
        * Esta lista siempre contiene
-       * como máximo seis IDs, por lo
+       * como máximo 24 IDs, por lo
        * que .in() es seguro aquí.
        */
       const {
@@ -226,15 +253,9 @@ const getRelatedMangas =
         )
 
       if (mangasError) {
-        console.error(
-          'Error cargando mangas relacionados:',
-          mangasError.message
+        throw new Error(
+          `Error cargando mangas relacionados: ${mangasError.message}`
         )
-
-        return {
-          mangas: [],
-          sharedCounts: {},
-        }
       }
 
       const unordered =
@@ -247,25 +268,32 @@ const getRelatedMangas =
        * Supabase no conserva el orden
        * del array enviado a .in().
        */
-      const mangas =
-        topIds
-          .map((relatedId) =>
-            unordered.find(
-              (manga) =>
-                manga.id ===
-                relatedId
-            )
-          )
-          .filter(
-            (
-              manga
-            ): manga is MangaRow =>
-              Boolean(manga)
-          )
+      const mangas = unordered
+        .sort((first, second) => {
+          const sharedDifference =
+            (sharedCounts[second.id] ?? 0) -
+            (sharedCounts[first.id] ?? 0)
+
+          if (sharedDifference !== 0) {
+            return sharedDifference
+          }
+
+          const scoreDifference =
+            Number(second.score ?? 0) -
+            Number(first.score ?? 0)
+
+          if (scoreDifference !== 0) {
+            return scoreDifference
+          }
+
+          return Number(second.views ?? 0) - Number(first.views ?? 0)
+        })
+        .slice(0, 6)
 
       return {
         mangas,
         sharedCounts,
+        commonTags,
       }
     },
     [
@@ -282,12 +310,24 @@ const getRelatedMangas =
 export async function MangaRelated({
   mangaId,
 }: MangaRelatedProps) {
+  let result: RelatedResult
+
+  try {
+    result = await getRelatedMangas(mangaId)
+  } catch (error) {
+    console.error(
+      'No se pudieron cargar los mangas relacionados:',
+      error
+    )
+
+    return null
+  }
+
   const {
     mangas,
     sharedCounts,
-  } = await getRelatedMangas(
-    mangaId
-  )
+    commonTags,
+  } = result
 
   if (mangas.length === 0) {
     return null
@@ -302,8 +342,12 @@ export async function MangaRelated({
             className="related-accent"
           />
 
-          También te puede gustar
+          Mangas relacionados
         </h2>
+
+        <Link href="/manga" className="related-view-all">
+          Ver catálogo →
+        </Link>
       </header>
 
       <div className="related-grid">
@@ -412,6 +456,18 @@ export async function MangaRelated({
         })}
       </div>
 
+      {commonTags.length > 0 && (
+        <nav className="related-links" aria-label="Explorar tags relacionados">
+          <span>Continúa explorando:</span>
+
+          {commonTags.slice(0, 4).map((tag) => (
+            <Link key={tag.id} href={`/tag/${tag.slug}`}>
+              {tag.name}
+            </Link>
+          ))}
+        </nav>
+      )}
+
       <style>{`
         .related-section {
           margin-top: 48px;
@@ -436,6 +492,16 @@ export async function MangaRelated({
           color: #f0ece8;
           font-size: 16px;
           font-weight: 700;
+        }
+
+        .related-view-all {
+          color: #7198df;
+          font-size: 13px;
+          text-decoration: none;
+        }
+
+        .related-view-all:hover {
+          color: #a8c2f0;
         }
 
         .related-accent {
@@ -549,6 +615,31 @@ export async function MangaRelated({
           font-size: 10px;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        .related-links {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          margin-top: 18px;
+          color: rgba(170, 162, 154, 0.72);
+          font-size: 13px;
+        }
+
+        .related-links a {
+          padding: 5px 10px;
+          border: 1px solid rgba(61, 90, 158, 0.25);
+          border-radius: 999px;
+          background: rgba(61, 90, 158, 0.1);
+          color: #7198df;
+          text-decoration: none;
+          transition: border-color 150ms ease, color 150ms ease;
+        }
+
+        .related-links a:hover {
+          border-color: rgba(113, 152, 223, 0.5);
+          color: #ffffff;
         }
 
         @media (max-width: 1024px) {

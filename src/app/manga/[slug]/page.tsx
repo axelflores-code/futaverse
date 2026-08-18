@@ -121,8 +121,28 @@ function safeBigInt(value: unknown): bigint {
   return BigInt(Math.max(0, Math.trunc(safeNumber(value))))
 }
 
-function cleanDescription(description: string | null, title: string): string {
-  const fallback = `Lee ${title} en español en MangaFuta.`
+function cleanSeoTitle(title: string): string {
+  return title
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function cleanDescription(
+  description: string | null,
+  title: string,
+  tags: TagItem[]
+): string {
+  const tagText = tags
+    .filter((tag) => tag.namespace !== 'content_warning')
+    .slice(0, 3)
+    .map((tag) => tag.name)
+    .join(', ')
+
+  const fallback = tagText
+    ? `Lee ${title} en español en MangaFuta. Explora esta obra y otros mangas relacionados con ${tagText}.`
+    : `Lee ${title} en español en MangaFuta y descubre otros mangas relacionados.`
+
   const text = description?.trim() || fallback
   return text.length > 160 ? `${text.slice(0, 157).trimEnd()}…` : text
 }
@@ -181,13 +201,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const { manga } = result
   const canonical = `${SITE_URL}/manga/${manga.slug}`
-  const description = cleanDescription(manga.description, manga.title)
+  const tags = (manga.manga_tags ?? [])
+    .map((relation) => relation.tags)
+    .filter((tag): tag is TagItem => Boolean(tag))
+  const seoTitle = cleanSeoTitle(manga.title)
+  const description = cleanDescription(manga.description, seoTitle, tags)
   const images = manga.cover_url
-    ? [{ url: manga.cover_url, alt: manga.title }]
+    ? [{ url: manga.cover_url, alt: `Portada de ${seoTitle}` }]
     : []
 
   return {
-    title: manga.title,
+    title: seoTitle,
     description,
     alternates: { canonical },
     robots: {
@@ -201,7 +225,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       },
     },
     openGraph: {
-      title: manga.title,
+      title: seoTitle,
       description,
       type: 'book',
       url: canonical,
@@ -211,7 +235,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     },
     twitter: {
       card: 'summary_large_image',
-      title: manga.title,
+      title: seoTitle,
       description,
       images: manga.cover_url ? [manga.cover_url] : [],
     },
@@ -258,6 +282,7 @@ export default async function MangaDetailPage({ params }: PageProps) {
 
   const score = safeNumber(manga.score)
   const canonical = `${SITE_URL}/manga/${manga.slug}`
+  const seoTitle = cleanSeoTitle(manga.title)
 
   return (
     <>
@@ -278,6 +303,7 @@ export default async function MangaDetailPage({ params }: PageProps) {
             ? { '@type': 'Person', name: manga.author }
             : undefined,
           genre: genres.map((genre) => genre.name),
+          keywords: tags.map((tag) => tag.name).join(', '),
           datePublished: manga.created_at ?? undefined,
           dateModified: manga.updated_at ?? undefined,
           publisher: {
@@ -288,16 +314,46 @@ export default async function MangaDetailPage({ params }: PageProps) {
         }}
       />
 
+      <JsonLd
+        type="BreadcrumbList"
+        data={{
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Inicio',
+              item: SITE_URL,
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Catálogo',
+              item: `${SITE_URL}/manga`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: seoTitle,
+              item: canonical,
+            },
+          ],
+        }}
+      />
+
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <Link
-          href="/manga"
-          className="mb-6 flex w-fit items-center gap-1 text-sm text-zinc-500 transition-colors hover:text-zinc-300"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-          Volver al catálogo
-        </Link>
+        <nav aria-label="Migas de pan" className="mb-6 flex min-w-0 items-center gap-2 text-sm text-zinc-500">
+          <Link href="/" className="transition-colors hover:text-zinc-300">
+            Inicio
+          </Link>
+          <span aria-hidden="true">/</span>
+          <Link href="/manga" className="transition-colors hover:text-zinc-300">
+            Catálogo
+          </Link>
+          <span aria-hidden="true">/</span>
+          <span className="truncate text-zinc-400" aria-current="page">
+            {seoTitle}
+          </span>
+        </nav>
 
         <div className="mb-10 flex flex-col gap-8 md:flex-row">
           <div className="flex-shrink-0">
@@ -392,6 +448,28 @@ export default async function MangaDetailPage({ params }: PageProps) {
                 </div>
               </div>
             ))}
+
+            <nav aria-label="Explorar contenido relacionado" className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/5 pt-5">
+              <span className="mr-1 text-sm text-zinc-500">Explora también:</span>
+              <Link href="/manga" className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:border-white/20 hover:text-white">
+                Todo el catálogo
+              </Link>
+              <Link href="/tags" className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:border-white/20 hover:text-white">
+                Todos los tags
+              </Link>
+              {tags
+                .filter((tag) => tag.namespace !== 'content_warning')
+                .slice(0, 3)
+                .map((tag) => (
+                  <Link
+                    key={`explore-${tag.id}`}
+                    href={`/tag/${tag.slug}`}
+                    className="rounded-full border border-[#3d5a9e]/30 bg-[#3d5a9e]/10 px-3 py-1.5 text-sm text-[#7198df] transition-colors hover:border-[#7198df]/50 hover:text-white"
+                  >
+                    Más de {tag.name}
+                  </Link>
+                ))}
+            </nav>
           </div>
         </div>
 

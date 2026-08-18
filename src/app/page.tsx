@@ -188,6 +188,9 @@ interface HomeData {
   popularRaw:
     MangaRow[]
 
+  topRatedRaw:
+    MangaRow[]
+
   latestRaw:
     MangaRow[]
 
@@ -305,6 +308,7 @@ const getHomeData =
       const [
         heroResult,
         popularResult,
+        topRatedResult,
         latestResult,
         topTagsResult,
         featuredTagsResult,
@@ -344,6 +348,43 @@ const getHomeData =
           .neq(
             'status',
             'draft'
+          )
+          .order(
+            'views',
+            {
+              ascending:
+                false,
+              nullsFirst:
+                false,
+            }
+          )
+          .limit(12),
+
+        /*
+         * Obras mejor valoradas para darles
+         * una entrada directa desde la portada.
+         */
+        supabase
+          .from('mangas')
+          .select(
+            MANGA_SELECT
+          )
+          .neq(
+            'status',
+            'draft'
+          )
+          .gt(
+            'score',
+            0
+          )
+          .order(
+            'score',
+            {
+              ascending:
+                false,
+              nullsFirst:
+                false,
+            }
           )
           .order(
             'views',
@@ -437,6 +478,14 @@ const getHomeData =
       ) {
         throw new Error(
           `Error cargando populares: ${popularResult.error.message}`
+        )
+      }
+
+      if (
+        topRatedResult.error
+      ) {
+        throw new Error(
+          `Error cargando mejor valorados: ${topRatedResult.error.message}`
         )
       }
 
@@ -582,6 +631,13 @@ const getHomeData =
           ) as unknown as
             MangaRow[],
 
+        topRatedRaw:
+          (
+            topRatedResult.data ??
+            []
+          ) as unknown as
+            MangaRow[],
+
         latestRaw:
           (
             latestResult.data ??
@@ -617,6 +673,7 @@ export default async function HomePage() {
   const {
     heroRaw,
     popularRaw,
+    topRatedRaw,
     latestRaw,
     topTags,
     tagSectionsRaw,
@@ -627,6 +684,9 @@ export default async function HomePage() {
 
   const popularMangas =
     popularRaw.map(mapManga)
+
+  const topRatedMangas =
+    topRatedRaw.map(mapManga)
 
   const latestMangas =
     latestRaw.map(mapManga)
@@ -666,6 +726,21 @@ export default async function HomePage() {
           contenido para adultos
           disponible gratuitamente.
         </p>
+
+        <nav
+          aria-label="Explorar MangaFuta"
+          className="home-primary-links"
+        >
+          <Link href="/manga">
+            Ver catálogo
+          </Link>
+          <Link href="/manga?order=rating">
+            Mejor valorados
+          </Link>
+          <Link href="/tags">
+            Explorar tags
+          </Link>
+        </nav>
       </section>
 
       <div className="home-content">
@@ -676,6 +751,14 @@ export default async function HomePage() {
           title="Más populares"
           href="/manga?order=popular&period=all"
         />
+
+        {topRatedMangas.length > 0 && (
+          <MangaRowScroll
+            mangas={topRatedMangas}
+            title="Mejor valorados"
+            href="/manga?order=rating"
+          />
+        )}
 
         <section className="home-section">
           <header className="home-section-header">
@@ -849,6 +932,33 @@ export default async function HomePage() {
             rgba(170, 162, 154, 0.62);
           font-size: 13px;
           line-height: 1.65;
+        }
+
+        .home-primary-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 16px;
+        }
+
+        .home-primary-links a {
+          display: inline-flex;
+          align-items: center;
+          min-height: 38px;
+          padding: 8px 14px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.04);
+          color: rgba(225, 218, 210, 0.9);
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: border-color 150ms ease, color 150ms ease;
+        }
+
+        .home-primary-links a:hover {
+          border-color: rgba(196, 149, 106, 0.45);
+          color: #ffffff;
         }
 
         .home-content {

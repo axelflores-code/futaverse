@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { unstable_cache } from 'next/cache'
 import { notFound } from 'next/navigation'
 import { createPublicClient } from '@/lib/supabase/public'
@@ -6,6 +7,7 @@ import { getAllCategories } from '@/lib/queries/categories'
 import { getAllTags } from '@/lib/queries/tag'
 import { MangaCatalog } from '@/components/manga/MangaCatalog'
 import { Pagination } from '@/components/ui/Pagination'
+import { JsonLd } from '@/components/seo/JsonLd'
 import type { Manga } from '@/types/manga'
 
 export const revalidate = 900
@@ -759,8 +761,55 @@ export default async function CatalogPage({
       activeTag
   }
 
+  const canonicalUrl =
+    currentPage > 1 &&
+    !activeCategory &&
+    !activeTag &&
+    order === 'recent'
+      ? `https://mangafuta.com/manga?page=${currentPage}`
+      : 'https://mangafuta.com/manga'
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      <JsonLd
+        type="BreadcrumbList"
+        data={{
+          itemListElement: [
+            {
+              '@type': 'ListItem',
+              position: 1,
+              name: 'Inicio',
+              item: 'https://mangafuta.com',
+            },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: 'Catálogo',
+              item: canonicalUrl,
+            },
+          ],
+        }}
+      />
+
+      <nav
+        aria-label="Migas de pan"
+        className="mb-5 flex items-center gap-2 text-sm text-zinc-500"
+      >
+        <Link
+          href="/"
+          className="transition-colors hover:text-zinc-300"
+        >
+          Inicio
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span
+          aria-current="page"
+          className="text-zinc-400"
+        >
+          Catálogo
+        </span>
+      </nav>
+
       <header
         style={{
           marginBottom: '22px',
@@ -811,6 +860,39 @@ export default async function CatalogPage({
           />
         </div>
       )}
+
+      <nav
+        aria-label="Más formas de explorar"
+        className="mt-12 flex flex-wrap items-center gap-2 border-t border-white/5 pt-6"
+      >
+        <span className="mr-1 text-sm text-zinc-500">
+          También puedes explorar:
+        </span>
+        <Link
+          href="/manga"
+          className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:border-white/20 hover:text-white"
+        >
+          Más recientes
+        </Link>
+        <Link
+          href="/manga?order=popular&period=all"
+          className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:border-white/20 hover:text-white"
+        >
+          Más populares
+        </Link>
+        <Link
+          href="/manga?order=rating"
+          className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-zinc-400 transition-colors hover:border-white/20 hover:text-white"
+        >
+          Mejor valorados
+        </Link>
+        <Link
+          href="/tags"
+          className="rounded-full border border-[#3d5a9e]/30 bg-[#3d5a9e]/10 px-3 py-1.5 text-sm text-[#7198df] transition-colors hover:border-[#7198df]/50 hover:text-white"
+        >
+          Índice de tags
+        </Link>
+      </nav>
     </div>
   )
 }
